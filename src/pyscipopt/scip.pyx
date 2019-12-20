@@ -5086,10 +5086,13 @@ cdef class Model:
         PY_SCIP_CALL(SCIPgetVarStrongbranchInt(self._scip, var.scip_var, itlim, <SCIP_Bool>idempotent, &down, &up, &downvalid, &upvalid, &downinf, &upinf, &downconflict, &upconflict, &lperror))
         return [down, up, downvalid, upvalid, downinf, upinf, downconflict, upconflict, lperror]
   
-    def getBranchScoreMultiple(self, Variable var, nchildren):
-        cdef SCIP_Real gain
-        PY_SCIP_CALL(SCIPgetBranchScoreMultiple(self._scip, var.scip_var, <int>nchildren, &gain))
-        return gain
+    def getBranchScoreMultiple(self, Variable var, nchildren, py_gains):
+        cdef SCIP_Real gains[3]
+        gains[0] = float(py_gains[0])
+        gains[1] = float(py_gains[1])
+        gains[2] = float(py_gains[2])
+        score = SCIPgetBranchScoreMultiple(self._scip, var.scip_var, <int>nchildren, gains)
+        return score
 
 
 # debugging memory management
