@@ -1098,6 +1098,37 @@ cdef extern from "scip/scip.h":
                                             SCIP_RESULT*  result)
     SCIP_BRANCHRULE* SCIPfindBranchrule(SCIP*        scip,
                                         const char*  name)
+    SCIP_RETCODE SCIPgetVarStrongbranchFrac(SCIP*       scip,
+                                            SCIP_VAR * 	var,
+                                            int 	itlim,
+                                            SCIP_Bool           idempotent,
+                                            SCIP_Real * 	down,
+                                            SCIP_Real * 	up,
+                                            SCIP_Bool * 	downvalid,
+                                            SCIP_Bool * 	upvalid,
+                                            SCIP_Bool * 	downinf,
+                                            SCIP_Bool * 	upinf,
+                                            SCIP_Bool * 	downconflict,
+                                            SCIP_Bool * 	upconflict,
+                                            SCIP_Bool * 	lperror)
+
+    SCIP_RETCODE SCIPgetVarStrongbranchInt( SCIP * 	scip,
+                                            SCIP_VAR * 	var,
+                                            int 	itlim,
+                                            SCIP_Bool           idempotent,
+                                            SCIP_Real * 	down,
+                                            SCIP_Real * 	up,
+                                            SCIP_Bool * 	downvalid,
+                                            SCIP_Bool * 	upvalid,
+                                            SCIP_Bool * 	downinf,
+                                            SCIP_Bool * 	upinf,
+                                            SCIP_Bool * 	downconflict,
+                                            SCIP_Bool * 	upconflict,
+                                            SCIP_Bool * 	lperror)
+    SCIP_Real SCIPgetBranchScoreMultiple(SCIP *     scip,
+                                         SCIP_VAR * 	var,
+                                         int    nchildren,
+                                         SCIP_Real * 	gains)	
 
     # Benders' decomposition plugin
     SCIP_RETCODE SCIPincludeBenders(SCIP* scip,

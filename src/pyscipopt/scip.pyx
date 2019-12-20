@@ -5060,6 +5060,38 @@ cdef class Model:
             bestcand
         )
 
+    def getVarStrongbranchFrac(self, Variable var, idempotent, itlim = -1):
+        cdef SCIP_Real down
+        cdef SCIP_Real up
+        cdef SCIP_Bool downvalid
+        cdef SCIP_Bool upvalid
+        cdef SCIP_Bool downinf
+        cdef SCIP_Bool upinf
+        cdef SCIP_Bool downconflict
+        cdef SCIP_Bool upconflict
+        cdef SCIP_Bool lperror
+        PY_SCIP_CALL(SCIPgetVarStrongbranchFrac(self._scip, var.scip_var, itlim, <SCIP_Bool>idempotent, &down, &up, &downvalid, &upvalid, &downinf, &upinf, &downconflict, &upconflict, &lperror))
+        return [down, up, downvalid, upvalid, downinf, upinf, downconflict, upconflict, lperror]
+
+    def getVarStrongbranchInt(self, Variable var, idempotent, itlim = -1):
+        cdef SCIP_Real down
+        cdef SCIP_Real up
+        cdef SCIP_Bool downvalid
+        cdef SCIP_Bool upvalid
+        cdef SCIP_Bool downinf
+        cdef SCIP_Bool upinf
+        cdef SCIP_Bool downconflict
+        cdef SCIP_Bool upconflict
+        cdef SCIP_Bool lperror
+        PY_SCIP_CALL(SCIPgetVarStrongbranchInt(self._scip, var.scip_var, itlim, <SCIP_Bool>idempotent, &down, &up, &downvalid, &upvalid, &downinf, &upinf, &downconflict, &upconflict, &lperror))
+        return [down, up, downvalid, upvalid, downinf, upinf, downconflict, upconflict, lperror]
+  
+    def getBranchScoreMultiple(self, Variable var, nchildren)
+        cdef SCIP_Real gain
+        PY_SCIP_CALL(SCIPgetBranchScoreMultiple(self._scip, var.scip_var, <int>nchildren, &gain))
+        return gain
+
+
 # debugging memory management
 def is_memory_freed():
     return BMSgetMemoryUsed() == 0
