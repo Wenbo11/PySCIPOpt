@@ -646,8 +646,7 @@ cdef class Constraint:
         """Retrieve True if constraint is quadratic"""
         constype = bytes(SCIPconshdlrGetName(SCIPconsGetHdlr(self.scip_cons))).decode('UTF-8')
         return constype == 'quadratic'
-
-
+    
 cdef void relayMessage(SCIP_MESSAGEHDLR *messagehdlr, FILE *file, const char *msg):
     sys.stdout.write(msg.decode('UTF-8'))
 
@@ -1294,6 +1293,10 @@ cdef class Model:
         """Retrieve the number of constraints."""
         return SCIPgetNConss(self._scip)
 
+    def setConsModifiable(self, Constraint cons, modifiable=True):
+        """Make variables be modifiable to take out dual price"""
+        PY_SCIP_CALL(SCIPsetConsModifiable(self._scip, cons.scip_cons, modifiable))        
+   
     def updateNodeLowerbound(self, Node node, lb):
         """if given value is larger than the node's lower bound (in transformed problem),
         sets the node's lower bound to the new value
