@@ -4203,7 +4203,7 @@ cdef class Model:
             },
         }
 
-    def getKhalilState(self, root_info, candidates):
+    def getKhalilState(self, root_info, candidates, flag='PDN'):
         cdef SCIP* scip = self._scip
 
         cdef np.ndarray[np.float32_t, ndim=1] cand_coefs
@@ -4370,7 +4370,7 @@ cdef class Model:
         cdef float ncoefs_var, ncoefs_mean, ncoefs_min, ncoefs_max
 
         # if at root node, extract root information
-        if SCIPgetNNodes(scip) == 1:
+        if SCIPgetNNodes(scip) == 1 or (SCIPgetNNodes(scip) == 2 and flag == 'PDN'):
             root_info['col'] = {}
             root_info['col']['coefs']               = {}
             root_info['col']['coefs_pos']           = {}
