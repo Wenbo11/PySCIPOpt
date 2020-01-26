@@ -1132,6 +1132,10 @@ cdef extern from "scip/scip.h":
                                          int    nchildren,
                                          SCIP_Real * 	gains)	
 
+    # SCIP_RETCODE SCIPgetLeaves(SCIP * scip,
+    #                            SCIP_NODE ***   leaves,
+    #                            int *   nleaves)          
+
     # Benders' decomposition plugin
     SCIP_RETCODE SCIPincludeBenders(SCIP* scip,
                                    const char*  name,

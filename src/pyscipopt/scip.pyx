@@ -5097,6 +5097,21 @@ cdef class Model:
         score = SCIPgetBranchScoreMultiple(self._scip, var.scip_var, <int>nchildren, gains)
         return score
 
+    def getOpenNodes(self):
+        """ get current focused node """
+        cdef SCIP_NODE** leaves
+        cdef SCIP_NODE** siblings
+        cdef SCIP_NODE** children
+        cdef int nleaves
+        cdef int nsiblings
+        cdef int nchildren
+        PY_SCIP_CALL(SCIPgetOpenNodesData(self._scip, &leaves, &children, &siblings, &nleaves, &nchildren, &nsiblings))
+        return [[Node.create(leaves[i]) for i in range(nleaves)], [Node.create(siblings[j]) for j in range(nsiblings)], [Node.create(children[m]) for m in range(nchildren)]]
+
+    def getFocusNode(self):
+        """ get current focused node """
+        cdef SCIP_NODE* node = SCIPgetFocusNode(self._scip)
+        return Node.create(node)
 
 # debugging memory management
 def is_memory_freed():
