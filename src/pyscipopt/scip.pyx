@@ -5171,14 +5171,15 @@ cdef class Model:
         cand_cutoffs = np.empty(shape=(2, ncands), dtype=np.float32)
         cand_conflict_length = np.empty(shape=(2, ncands), dtype=np.float32)
         cand_inferences = np.empty(shape=(2, ncands), dtype=np.float32)
+        cdef SCIP_Real max_depth = max(1, SCIPgetMaxDepth(scip))
 
     	# Candidate State
         for cand_i in range(ncands):
             var = (<Variable>candidates[cand_i]).scip_var
             cand_sols[0][cand_i] = SCIPvarGetLPSol(var)
             cand_sols[1][cand_i] = SCIPvarGetAvgSol(var)
-            cand_branch_depth[0][cand_i] = 1 - SCIPvarGetAvgBranchdepthCurrentRun(var, SCIP_BRANCHDIR_UPWARDS)/SCIPgetMaxDepth(scip)
-            cand_branch_depth[1][cand_i] = 1 - SCIPvarGetAvgBranchdepthCurrentRun(var, SCIP_BRANCHDIR_DOWNWARDS)/SCIPgetMaxDepth(scip)
+            cand_branch_depth[0][cand_i] = 1 - SCIPvarGetAvgBranchdepthCurrentRun(var, SCIP_BRANCHDIR_UPWARDS)/max_depth
+            cand_branch_depth[1][cand_i] = 1 - SCIPvarGetAvgBranchdepthCurrentRun(var, SCIP_BRANCHDIR_DOWNWARDS)/max_depth
             cand_branch_scores[0][cand_i] = varScore(SCIPgetVarConflictScore(scip, var), SCIPgetAvgConflictScore(scip))
             cand_branch_scores[1][cand_i] = varScore(SCIPgetVarConflictlengthScore(scip, var), SCIPgetAvgConflictlengthScore(scip))
             cand_branch_scores[2][cand_i] = varScore(SCIPgetVarAvgInferenceScore(scip, var), SCIPgetAvgInferenceScore(scip))
@@ -5188,8 +5189,8 @@ cdef class Model:
             pseudocost_up = SCIPgetVarPseudocostCountCurrentRun(scip, var, SCIP_BRANCHDIR_UPWARDS)
             pseudocost_down = SCIPgetVarPseudocostCountCurrentRun(scip, var, SCIP_BRANCHDIR_DOWNWARDS)
            
-            cand_pc_stats[0][cand_i] = pseudocost_up/SCIPgetPseudocostCount(scip, SCIP_BRANCHDIR_UPWARDS, False)
-            cand_pc_stats[1][cand_i] = pseudocost_down/SCIPgetPseudocostCount(scip, SCIP_BRANCHDIR_DOWNWARDS, False)
+            cand_pc_stats[0][cand_i] = pseudocost_up/(SCIPgetPseudocostCount(scip, SCIP_BRANCHDIR_UPWARDS, False) + 1e-5)
+            cand_pc_stats[1][cand_i] = pseudocost_down/(SCIPgetPseudocostCount(scip, SCIP_BRANCHDIR_DOWNWARDS, False) + 1e-5)
             cand_pc_stats[2][cand_i] = pseudocost_up/max(1, SCIPvarGetNBranchingsCurrentRun(var, SCIP_BRANCHDIR_UPWARDS))
             cand_pc_stats[3][cand_i] = pseudocost_up/max(1, SCIPvarGetNBranchingsCurrentRun(var, SCIP_BRANCHDIR_DOWNWARDS))
             # 4 and 5 are left for branch_count
@@ -5229,14 +5230,14 @@ cdef class Model:
 
         cdef SCIP_Real lb_root = SCIPgetLowerboundRoot(scip)
 
-        current_node_feature[0] = float(SCIPnodeGetDepth(node))/SCIPgetMaxDepth(scip)
-        current_node_feature[1] = float(SCIPgetPlungeDepth(scip))/SCIPnodeGetDepth(node)
+        current_node_feature[0] = float(SCIPnodeGetDepth(node))/max_depth
+        current_node_feature[1] = float(SCIPgetPlungeDepth(scip))/max(1, SCIPnodeGetDepth(node))
         current_node_feature[2] = relDist(lower_bound, obj_val)
         current_node_feature[3] = relDist(lb_root, obj_val)
         current_node_feature[4] = relDist(upper_bound, obj_val)
         current_node_feature[5] = relPos(obj_val, upper_bound, lower_bound)
-        current_node_feature[6] = float(ncands)/(SCIPgetNVars(scip) - ncands)
-        current_node_feature[7] = float(SCIPdomchgGetNBoundchgs(SCIPnodeGetDomchg(node)))/SCIPgetNVars(scip)
+        current_node_feature[6] = float(ncands)/max(1, (SCIPgetNVars(scip) - ncands))
+        current_node_feature[7] = float(SCIPdomchgGetNBoundchgs(SCIPnodeGetDomchg(node)))/max(1, SCIPgetNVars(scip))
         
         cdef SCIP_Real nleaves_ = max(1., SCIPgetNLeaves(scip))
         cdef SCIP_Real nnodes_ = max(1., SCIPgetNNodes(scip))
@@ -5253,7 +5254,7 @@ cdef class Model:
 
         depth_feature[0] = scip.stat.nactivatednodes/nnodes_
         depth_feature[1] = scip.stat.ndeactivatednodes/nnodes_
-        depth_feature[2] = SCIPgetPlungeDepth(scip)/SCIPgetMaxDepth(scip)
+        depth_feature[2] = SCIPgetPlungeDepth(scip)/max_depth
         depth_feature[3] = SCIPgetNBacktracks(scip)/nnodes_
 
         cdef SCIP_Real nlps = max(1., SCIPgetNLPs(scip))
