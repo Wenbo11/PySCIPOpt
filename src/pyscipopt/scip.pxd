@@ -351,6 +351,7 @@ cdef extern from "scip/scip.h":
         SCIP_Longint number
         SCIP_Real lowerbound
         SCIP_Real estimate
+        unsigned int depth
 
     ctypedef struct SCIP_NODESEL:
         pass
@@ -716,6 +717,8 @@ cdef extern from "scip/scip.h":
     SCIP_Real SCIPvarGetUbLocal(SCIP_VAR* var)
     SCIP_Real SCIPvarGetObj(SCIP_VAR* var)
     SCIP_Real SCIPvarGetLPSol(SCIP_VAR* var)
+    SCIP_Real SCIPvarGetAvgBranchdepthCurrentRun(SCIP_VAR* var, SCIP_BRANCHDIR dir)
+
     void SCIPvarSetData(SCIP_VAR* var, SCIP_VARDATA* vardata)
     SCIP_VARDATA* SCIPvarGetData(SCIP_VAR* var)
     SCIP_Real SCIPvarGetAvgSol(SCIP_VAR* var)
@@ -723,6 +726,19 @@ cdef extern from "scip/scip.h":
     SCIP_Real SCIPgetVarPseudocost(SCIP* scip, SCIP_VAR *var, SCIP_BRANCHDIR dir)
     SCIP_Real SCIPvarGetCutoffSum(SCIP_VAR* var, SCIP_BRANCHDIR dir)
     SCIP_Longint SCIPvarGetNBranchings(SCIP_VAR* var, SCIP_BRANCHDIR dir)
+    SCIP_Real SCIPgetVarConflictScore(SCIP* scip, SCIP_VAR* var)   
+    SCIP_Real SCIPgetVarConflictlengthScore(SCIP* scip, SCIP_VAR* var)
+    SCIP_Real SCIPgetVarAvgInferenceScore(SCIP* scip, SCIP_VAR* var)
+    SCIP_Real SCIPgetVarAvgCutoffScore(SCIP* scip, SCIP_VAR* var)
+    SCIP_Real SCIPgetVarPseudocostScore(SCIP* scip, SCIP_VAR* var, SCIP_Real solval)
+    SCIP_Real SCIPgetVarPseudocostCountCurrentRun(SCIP* scip, SCIP_VAR* var, SCIP_BRANCHDIR dir)
+    SCIP_Longint SCIPvarGetNBranchingsCurrentRun(SCIP_VAR* var, SCIP_BRANCHDIR dir)
+    int SCIPvarGetNImpls(SCIP_VAR*var, SCIP_Bool varfixing) 
+    int SCIPvarGetNCliques(SCIP_VAR*var, SCIP_Bool varfixing)
+    int SCIPgetNCliques(SCIP* scip)
+    SCIP_Real SCIPgetVarAvgCutoffsCurrentRun(SCIP *scip, SCIP_VAR *var, SCIP_BRANCHDIR dir)
+    SCIP_Real SCIPgetVarAvgConflictlengthCurrentRun(SCIP* scip, SCIP_VAR *var, SCIP_BRANCHDIR dir)
+    SCIP_Real   SCIPgetVarAvgInferencesCurrentRun (SCIP *scip, SCIP_VAR *var, SCIP_BRANCHDIR dir)
 
     # SCIP_DOMCHG Methods
     int SCIPdomchgGetNBoundchgs(SCIP_DOMCHG* domchg)

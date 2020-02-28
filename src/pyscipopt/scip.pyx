@@ -571,6 +571,13 @@ cdef class Variable(Expr):
         """Retrieve the current LP solution value of variable"""
         return SCIPvarGetLPSol(self.scip_var)
 
+    def getAvgSol(self):
+        """Retrieve a weighted average solution value of the variable in all feasible primal solutions found so far"""
+        return SCIPvarGetAvgSol(self.scip_var)
+
+    def getAvgBranchdepthCurrentRun(self):
+        """returns the average depth of bound changes in given direction due to branching on the variable in the current run"""
+        return [SCIPvarGetAvgBranchdepthCurrentRun(self.scip_var, SCIP_BRANCHDIR_UPWARDS), SCIPvarGetAvgBranchdepthCurrentRun(self.scip_var, SCIP_BRANCHDIR_DOWNWARDS)]
 
 cdef class Constraint:
     cdef SCIP_CONS* scip_cons
@@ -5098,7 +5105,7 @@ cdef class Model:
         return score
 
     def getOpenNodes(self):
-        """ get current focused node """
+        """ get all open nodes """
         cdef SCIP_NODE** leaves
         cdef SCIP_NODE** siblings
         cdef SCIP_NODE** children
@@ -5112,6 +5119,227 @@ cdef class Model:
         """ get current focused node """
         cdef SCIP_NODE* node = SCIPgetFocusNode(self._scip)
         return Node.create(node)
+
+    def getMaxDepth(self):
+        """ get the maximum depth in current branch and bound run """
+        return SCIPgetMaxDepth(self._scip)
+
+    def getVarConflictScore(self, Variable var):
+        """ returns the variable's conflict score value """
+        return SCIPgetVarConflictScore(self._scip, var.scip_var)
+
+    def getAvgConflictScore(self):
+        return SCIPgetAvgConflictScore(self._scip)
+
+    def getVarConflictlengthScore(self, Variable var):
+        return SCIPgetVarConflictlengthScore(self._scip, var.scip_var)
+
+    def getAvgConflictlengthScore(self):
+        return SCIPgetAvgConflictlengthScore(self._scip)
+
+    def getVarAvgInferenceScore(self, Variable var):
+        return SCIPgetVarAvgInferenceScore(self._scip, var.scip_var)
+
+    def getAvgInferenceScore(self):
+        return SCIPgetAvgInferenceScore(self._scip)
+
+    # Giulia's Features
+    def getGiuliaState(self, candidates):
+        def varScore(score, avgscore):
+            return 1 - 1/(1 + score/max(avgscore, 0.1))
+        
+        def gNormMax(x):
+            return max(x/(x + 1), 0.1)
+
+        def relDist(x, y):
+            if x*y < 0:
+                return 0
+            else:
+                return abs(x - y)/max(abs(x), abs(y), 1e-10)
+        def relPos(z, x, y):
+            return abs(x - z)/abs(x - y)
+        
+        cdef SCIP* scip = self._scip
+        cdef int ncands = len(candidates)
+        cdef int cand_i
+        cand_sols = np.empty(shape=(2, ncands), dtype=np.float32)
+        cand_branch_depth = np.empty(shape=(2, ncands), dtype=np.float32)
+        cand_branch_scores = np.empty(shape=(5, ncands), dtype=np.float32)
+        cand_pc_stats = np.empty(shape=(6, ncands), dtype=np.float32)
+        cand_implications = np.empty(shape=(2, ncands), dtype=np.float32)
+        cand_cliques = np.empty(shape=(2, ncands), dtype=np.float32)
+        cand_cutoffs = np.empty(shape=(2, ncands), dtype=np.float32)
+        cand_conflict_length = np.empty(shape=(2, ncands), dtype=np.float32)
+        cand_inferences = np.empty(shape=(2, ncands), dtype=np.float32)
+
+    	# Candidate State
+        for cand_i in range(ncands):
+            var = (<Variable>candidates[cand_i]).scip_var
+            cand_sols[0][cand_i] = SCIPvarGetLPSol(var)
+            cand_sols[1][cand_i] = SCIPvarGetAvgSol(var)
+            cand_branch_depth[0][cand_i] = 1 - SCIPvarGetAvgBranchdepthCurrentRun(var, SCIP_BRANCHDIR_UPWARDS)/SCIPgetMaxDepth(scip)
+            cand_branch_depth[1][cand_i] = 1 - SCIPvarGetAvgBranchdepthCurrentRun(var, SCIP_BRANCHDIR_DOWNWARDS)/SCIPgetMaxDepth(scip)
+            cand_branch_scores[0][cand_i] = varScore(SCIPgetVarConflictScore(scip, var), SCIPgetAvgConflictScore(scip))
+            cand_branch_scores[1][cand_i] = varScore(SCIPgetVarConflictlengthScore(scip, var), SCIPgetAvgConflictlengthScore(scip))
+            cand_branch_scores[2][cand_i] = varScore(SCIPgetVarAvgInferenceScore(scip, var), SCIPgetAvgInferenceScore(scip))
+            cand_branch_scores[3][cand_i] = varScore(SCIPgetVarAvgCutoffScore(scip, var), SCIPgetAvgCutoffScore(scip))
+            cand_branch_scores[4][cand_i] = varScore(SCIPgetVarPseudocostScore(scip, var, SCIPvarGetLPSol(var)), SCIPgetAvgPseudocostScore(scip))
+            
+            pseudocost_up = SCIPgetVarPseudocostCountCurrentRun(scip, var, SCIP_BRANCHDIR_UPWARDS)
+            pseudocost_down = SCIPgetVarPseudocostCountCurrentRun(scip, var, SCIP_BRANCHDIR_DOWNWARDS)
+           
+            cand_pc_stats[0][cand_i] = pseudocost_up/SCIPgetPseudocostCount(scip, SCIP_BRANCHDIR_UPWARDS, False)
+            cand_pc_stats[1][cand_i] = pseudocost_down/SCIPgetPseudocostCount(scip, SCIP_BRANCHDIR_DOWNWARDS, False)
+            cand_pc_stats[2][cand_i] = pseudocost_up/max(1, SCIPvarGetNBranchingsCurrentRun(var, SCIP_BRANCHDIR_UPWARDS))
+            cand_pc_stats[3][cand_i] = pseudocost_up/max(1, SCIPvarGetNBranchingsCurrentRun(var, SCIP_BRANCHDIR_DOWNWARDS))
+            # 4 and 5 are left for branch_count
+            cand_pc_stats[4][cand_i] = pseudocost_up
+            cand_pc_stats[5][cand_i] = pseudocost_down
+
+            cand_implications[0][cand_i] = SCIPvarGetNImpls(var, True)
+            cand_implications[1][cand_i] = SCIPvarGetNImpls(var, False)
+
+            cand_cliques[0][cand_i] = float(SCIPvarGetNCliques(var, True))/max(1, SCIPgetNCliques(scip))
+            cand_cliques[1][cand_i] = float(SCIPvarGetNCliques(var, False))/max(1, SCIPgetNCliques(scip))
+
+            cand_cutoffs[0][cand_i] = gNormMax(SCIPgetVarAvgCutoffsCurrentRun(scip, var, SCIP_BRANCHDIR_UPWARDS))
+            cand_cutoffs[1][cand_i] = gNormMax(SCIPgetVarAvgCutoffsCurrentRun(scip, var, SCIP_BRANCHDIR_DOWNWARDS))
+
+            cand_conflict_length[0][cand_i] = gNormMax(SCIPgetVarAvgConflictlengthCurrentRun(scip, var, SCIP_BRANCHDIR_UPWARDS))
+            cand_conflict_length[1][cand_i] = gNormMax(SCIPgetVarAvgConflictlengthCurrentRun(scip, var, SCIP_BRANCHDIR_DOWNWARDS))
+
+            cand_inferences[0][cand_i] = gNormMax(SCIPgetVarAvgInferencesCurrentRun(scip, var, SCIP_BRANCHDIR_UPWARDS))
+            cand_inferences[1][cand_i] = gNormMax(SCIPgetVarAvgInferencesCurrentRun(scip, var, SCIP_BRANCHDIR_DOWNWARDS))
+
+    	# Search tree state
+        cdef SCIP_NODE* node = SCIPgetFocusNode(scip)
+        cdef SCIP_Real upper_bound = SCIPgetUpperbound(scip)
+        cdef SCIP_Real lower_bound = SCIPgetLowerbound(scip)
+        cdef SCIP_Real obj_val = SCIPgetLPObjval(scip)
+        
+        current_node_feature = np.empty(shape=(8,), dtype=np.float32)
+        nodes_feature = np.empty(shape=(8,), dtype=np.float32)
+        depth_feature = np.empty(shape=(4,), dtype=np.float32)
+        LP_feature = np.empty(shape=(4,), dtype=np.float32)
+        gap = np.empty(shape=(4,), dtype=np.float32)
+        bound_sol_feature = np.empty(shape=(5,), dtype=np.float32)
+        avg_scores = np.empty(shape=(12,), dtype=np.float32)
+        open_nodes_bounds = np.empty(shape=(12,), dtype=np.float32)
+        open_node_depths = np.empty(shape=(4,), dtype=np.float32)
+
+        cdef SCIP_Real lb_root = SCIPgetLowerboundRoot(scip)
+
+        current_node_feature[0] = float(SCIPnodeGetDepth(node))/SCIPgetMaxDepth(scip)
+        current_node_feature[1] = float(SCIPgetPlungeDepth(scip))/SCIPnodeGetDepth(node)
+        current_node_feature[2] = relDist(lower_bound, obj_val)
+        current_node_feature[3] = relDist(lb_root, obj_val)
+        current_node_feature[4] = relDist(upper_bound, obj_val)
+        current_node_feature[5] = relPos(obj_val, upper_bound, lower_bound)
+        current_node_feature[6] = float(ncands)/(SCIPgetNVars(scip) - ncands)
+        current_node_feature[7] = float(SCIPdomchgGetNBoundchgs(SCIPnodeGetDomchg(node)))/SCIPgetNVars(scip)
+        
+        cdef SCIP_Real nleaves_ = max(1., SCIPgetNLeaves(scip))
+        cdef SCIP_Real nnodes_ = max(1., SCIPgetNNodes(scip))
+        
+        nodes_feature[0] = SCIPgetNObjlimLeaves(scip)/nleaves_
+        nodes_feature[1] = SCIPgetNInfeasibleLeaves(scip)/nleaves_
+        nodes_feature[2] = SCIPgetNFeasibleLeaves(scip)/nleaves_
+        nodes_feature[3] = (SCIPgetNInfeasibleLeaves(scip)+1)/(SCIPgetNObjlimLeaves(scip)+1)
+        nodes_feature[4] = SCIPgetNNodesLeft(scip)/nnodes_
+        nodes_feature[5] = nleaves_/nnodes_
+        # toda: check the feasibility of scip.stat.ninternalnodes
+        nodes_feature[6] = scip.stat.ninternalnodes/nnodes_
+        nodes_feature[7] = nnodes_/scip.stat.ncreatednodes
+
+        depth_feature[0] = scip.stat.nactivatednodes/nnodes_
+        depth_feature[1] = scip.stat.ndeactivatednodes/nnodes_
+        depth_feature[2] = SCIPgetPlungeDepth(scip)/SCIPgetMaxDepth(scip)
+        depth_feature[3] = SCIPgetNBacktracks(scip)/nnodes_
+
+        cdef SCIP_Real nlps = max(1., SCIPgetNLPs(scip))
+
+        LP_feature[0] = np.log(SCIPgetNLPIterations(scip)/nnodes_)
+        LP_feature[1] = np.log(nlps/nnodes_)
+        LP_feature[2] = nnodes_/nlps
+        LP_feature[3] = SCIPgetNNodeLPs(scip)/nlps
+
+        gap[0] = np.log(scip.stat.primaldualintegral)
+        gap[1] = SCIPgetGap(scip)/max(1, scip.stat.lastsolgap)
+        gap[2] = SCIPgetGap(scip)/max(1, scip.stat.firstsolgap)
+        gap[3] = scip.stat.lastsolgap/max(1, scip.stat.firstsolgap)
+        
+        bound_sol_feature[0] = relDist(lb_root, lower_bound)
+        bound_sol_feature[1] = relDist(lb_root, SCIPgetAvgLowerbound(scip))
+        bound_sol_feature[2] = relDist(upper_bound, lower_bound)
+        bound_sol_feature[3] = SCIPisPrimalboundSol(scip)
+        bound_sol_feature[4] = scip.stat.nnodesbeforefirst/nnodes_
+
+        avg_scores[0] = gNormMax(SCIPgetAvgConflictScore(scip))
+        avg_scores[1] = gNormMax(SCIPgetAvgConflictlengthScore(scip))
+        avg_scores[2] = gNormMax(SCIPgetAvgInferenceScore(scip))
+        avg_scores[3] = gNormMax(SCIPgetAvgCutoffScore(scip))
+        avg_scores[4] = gNormMax(SCIPgetAvgPseudocostScore(scip))
+        avg_scores[5] = gNormMax(SCIPgetAvgCutoffs(scip, SCIP_BRANCHDIR_UPWARDS))
+        avg_scores[6] = gNormMax(SCIPgetAvgCutoffs(scip, SCIP_BRANCHDIR_DOWNWARDS))
+        avg_scores[7] = gNormMax(SCIPgetAvgInferences(scip, SCIP_BRANCHDIR_UPWARDS))
+        avg_scores[8] = gNormMax(SCIPgetAvgInferences(scip, SCIP_BRANCHDIR_DOWNWARDS))
+        avg_scores[9] = gNormMax(SCIPgetPseudocostVariance(scip, SCIP_BRANCHDIR_UPWARDS, False))
+        avg_scores[10] = gNormMax(SCIPgetPseudocostVariance(scip, SCIP_BRANCHDIR_DOWNWARDS, False))
+        avg_scores[11] = gNormMax(SCIPgetNConflictConssApplied(scip))
+
+        cdef SCIP_NODE** leaves
+        cdef SCIP_NODE** siblings
+        cdef SCIP_NODE** children
+        cdef int nleaves
+        cdef int nsiblings
+        cdef int nchildren
+        PY_SCIP_CALL(SCIPgetOpenNodesData(scip, &leaves, &children, &siblings, &nleaves, &nchildren, &nsiblings))
+                
+        cdef np.ndarray[float, ndim=1] open_lbs = np.empty([nleaves+nchildren+nsiblings], dtype=np.float32)
+        cdef np.ndarray[float, ndim=1] open_ds = np.empty([nleaves+nchildren+nsiblings], dtype=np.float32)    
+
+        for i in range(nleaves):
+            open_lbs[i] = leaves[i].lowerbound
+            open_ds[i] = leaves[i].depth
+        for i in range(nchildren):
+            open_lbs[nleaves+i] = children[i].lowerbound
+            open_ds[i] = children[i].depth
+        for i in range(nsiblings):
+            open_lbs[nleaves+nchildren+i] = siblings[i].lowerbound
+            open_ds[i] = siblings[i].depth
+
+        cdef float nopen = max(1., nleaves + nchildren + nsiblings)
+        cdef SCIP_Real open_lbs_max = max(open_lbs)
+        cdef SCIP_Real open_lbs_min = min(open_lbs)
+        cdef SCIP_Real open_lbs_mean = np.mean(open_lbs)
+        cdef SCIP_Real open_lbs_q1 = np.percentile(open_lbs, 25)
+        cdef SCIP_Real open_lbs_q3 = np.percentile(open_lbs, 75)
+        cdef SCIP_Real open_ds_q1 = np.percentile(open_ds, 25)
+        cdef SCIP_Real open_ds_q3 = np.percentile(open_ds, 75)
+
+        open_nodes_bounds[0] = np.sum(open_lbs == open_lbs_max)/nopen
+        open_nodes_bounds[1] = np.sum(open_lbs == open_lbs_min)/nopen
+        open_nodes_bounds[2] = relDist(lower_bound, open_lbs_max)
+        open_nodes_bounds[3] = relDist(open_lbs_min, open_lbs_max)
+        open_nodes_bounds[4] = relDist(open_lbs_min, upper_bound)
+        open_nodes_bounds[5] = relDist(open_lbs_max, upper_bound)
+        open_nodes_bounds[6] = relPos(open_lbs_mean, upper_bound, lower_bound)
+        open_nodes_bounds[7] = relPos(open_lbs_min, upper_bound, lower_bound)
+        open_nodes_bounds[8] = relPos(open_lbs_max, upper_bound, lower_bound)
+        open_nodes_bounds[9] = relDist(open_lbs_q1, open_lbs_q3)
+        open_nodes_bounds[10] = np.std(open_lbs)/open_lbs_mean
+        open_nodes_bounds[11] = (open_lbs_q3 - open_lbs_q1)/(open_lbs_q3 + open_lbs_q1 + 1e-10)
+
+        open_node_depths[0] = np.mean(open_ds)/SCIPgetMaxDepth(scip)
+        open_node_depths[1] = relDist(open_ds_q1, open_ds_q3)
+        open_node_depths[2] = np.std(open_ds)/np.mean(open_ds)
+        open_node_depths[3] = (open_ds_q3 - open_ds_q1)/(open_ds_q3 + open_ds_q1 + 1e-10)
+
+        return {'node_feature': np.concatenate((cand_sols, cand_branch_depth, cand_branch_scores, cand_pc_stats,\
+                                                cand_implications, cand_cliques, cand_cutoffs, cand_conflict_length,\
+                                                cand_inferences), 0),
+                'tree_feature': np.concatenate((current_node_feature, nodes_feature, depth_feature, LP_feature, gap,\
+                                                bound_sol_feature, avg_scores, open_nodes_bounds, open_node_depths), 0)}
 
 # debugging memory management
 def is_memory_freed():
