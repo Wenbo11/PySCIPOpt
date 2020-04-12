@@ -5038,9 +5038,13 @@ cdef class Model:
             'solvingtime': SCIPgetSolvingTime(scip),
         }
 
-    def executeBranchRule(self, str name, allowaddcons):
+    def executeBranchRule(self, str name, allowaddcons, domred=True):
         cdef SCIP_BRANCHRULE*  branchrule
         cdef SCIP_RESULT result
+        
+        if name == 'vanillafullstrong':
+            self.setBoolParam('branching/vanillafullstrong/domred', domred)
+
         branchrule = SCIPfindBranchrule(self._scip, name.encode("UTF-8"))
         if branchrule == NULL:
             print("Error, branching rule not found!")
