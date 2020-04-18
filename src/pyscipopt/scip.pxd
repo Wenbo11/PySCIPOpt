@@ -2056,4 +2056,5 @@ cdef extern from "scip/branch_vanillafullstrong.h":
                                               SCIP_Real** candscores,
                                               int* ncands,
                                               int* npriocands,
-                                              int* bestcand)
+                                              int* bestcand,
+                                              int* scip_result)
