@@ -5059,9 +5059,10 @@ cdef class Model:
         cdef int        ncands
         cdef int        npriocands
         cdef int        bestcand
+        cdef int        scip_result
 
         PY_SCIP_CALL(SCIPgetVanillafullstrongData(self._scip,
-            &cands, &candscores, &ncands, &npriocands, &bestcand))
+            &cands, &candscores, &ncands, &npriocands, &bestcand, &scip_result))
 
         assert cands is not NULL
         assert ncands > 0 and npriocands >= 0
@@ -5071,7 +5072,8 @@ cdef class Model:
             [Variable.create(cands[i]) for i in range(ncands)],
             None if candscores is NULL else [candscores[i] for i in range(ncands)],
             npriocands,
-            bestcand
+            bestcand,
+            scip_result
         )
 
     def getVarStrongbranchFrac(self, Variable var, idempotent, itlim = -1):
