@@ -5223,6 +5223,7 @@ cdef class Model:
         cdef SCIP_Real upper_bound = SCIPgetUpperbound(scip)
         cdef SCIP_Real lower_bound = SCIPgetLowerbound(scip)
         cdef SCIP_Real obj_val = SCIPgetLPObjval(scip)
+        cdef int depth = SCIPnodeGetDepth(node)
         
         current_node_feature = np.empty(shape=(8,), dtype=np.float32)
         nodes_feature = np.empty(shape=(8,), dtype=np.float32)
@@ -5236,14 +5237,14 @@ cdef class Model:
 
         cdef SCIP_Real lb_root = SCIPgetLowerboundRoot(scip)
 
-        current_node_feature[0] = float(SCIPnodeGetDepth(node))/max_depth
-        current_node_feature[1] = float(SCIPgetPlungeDepth(scip))/max(1, SCIPnodeGetDepth(node))
+        current_node_feature[0] = float(depth/max_depth)
+        current_node_feature[1] = float(SCIPgetPlungeDepth(scip))/max(1., depth)
         current_node_feature[2] = relDist(lower_bound, obj_val)
         current_node_feature[3] = relDist(lb_root, obj_val)
         current_node_feature[4] = relDist(upper_bound, obj_val)
         current_node_feature[5] = relPos(obj_val, upper_bound, lower_bound)
-        current_node_feature[6] = float(ncands)/max(1, (SCIPgetNVars(scip) - ncands))
-        current_node_feature[7] = float(SCIPdomchgGetNBoundchgs(SCIPnodeGetDomchg(node)))/max(1, SCIPgetNVars(scip))
+        current_node_feature[6] = float(ncands)/max(1., (SCIPgetNVars(scip) - ncands))
+        current_node_feature[7] = float(SCIPdomchgGetNBoundchgs(SCIPnodeGetDomchg(node)))/max(1., SCIPgetNVars(scip))
         
         cdef SCIP_Real nleaves_ = max(1., SCIPgetNLeaves(scip))
         cdef SCIP_Real nnodes_ = max(1., SCIPgetNNodes(scip))
@@ -5300,22 +5301,26 @@ cdef class Model:
         cdef int nleaves
         cdef int nsiblings
         cdef int nchildren
+
         PY_SCIP_CALL(SCIPgetOpenNodesData(scip, &leaves, &children, &siblings, &nleaves, &nchildren, &nsiblings))
                 
-        cdef np.ndarray[float, ndim=1] open_lbs = np.empty([nleaves+nchildren+nsiblings], dtype=np.float32)
-        cdef np.ndarray[float, ndim=1] open_ds = np.empty([nleaves+nchildren+nsiblings], dtype=np.float32)    
+        cdef np.ndarray[float, ndim=1] open_lbs = np.empty([nleaves+nchildren+nsiblings+1], dtype=np.float32)
+        cdef np.ndarray[float, ndim=1] open_ds = np.empty([nleaves+nchildren+nsiblings+1], dtype=np.float32)    
+
+        open_lbs[0] = lower_bound
+        open_ds[0] = depth
 
         for i in range(nleaves):
-            open_lbs[i] = leaves[i].lowerbound
-            open_ds[i] = leaves[i].depth
+            open_lbs[i+1] = leaves[i].lowerbound
+            open_ds[i+1] = leaves[i].depth
         for i in range(nchildren):
-            open_lbs[nleaves+i] = children[i].lowerbound
-            open_ds[i] = children[i].depth
+            open_lbs[nleaves+i+1] = children[i].lowerbound
+            open_ds[nleaves+i+1] = children[i].depth
         for i in range(nsiblings):
-            open_lbs[nleaves+nchildren+i] = siblings[i].lowerbound
-            open_ds[i] = siblings[i].depth
+            open_lbs[nleaves+nchildren+i+1] = siblings[i].lowerbound
+            open_ds[nleaves+nchildren+i+1] = siblings[i].depth
 
-        cdef float nopen = max(1., nleaves + nchildren + nsiblings)
+        cdef float nopen = max(1., nleaves+nchildren+nsiblings+1)
         cdef SCIP_Real open_lbs_max = max(open_lbs)
         cdef SCIP_Real open_lbs_min = min(open_lbs)
         cdef SCIP_Real open_lbs_mean = np.mean(open_lbs)
