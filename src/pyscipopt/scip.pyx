@@ -5184,8 +5184,11 @@ cdef class Model:
             var = (<Variable>candidates[cand_i]).scip_var
             cand_sols[0][cand_i] = SCIPvarGetLPSol(var)
             cand_sols[1][cand_i] = SCIPvarGetAvgSol(var)
-            cand_branch_depth[0][cand_i] = 1 - SCIPvarGetAvgBranchdepthCurrentRun(var, SCIP_BRANCHDIR_UPWARDS)/max_depth
-            cand_branch_depth[1][cand_i] = 1 - SCIPvarGetAvgBranchdepthCurrentRun(var, SCIP_BRANCHDIR_DOWNWARDS)/max_depth
+            cand_branch_depth[0][cand_i] = 1 - min(max_depth, SCIPvarGetAvgBranchdepthCurrentRun(var, SCIP_BRANCHDIR_UPWARDS))/max_depth
+            cand_branch_depth[1][cand_i] = 1 - min(max_depth, SCIPvarGetAvgBranchdepthCurrentRun(var, SCIP_BRANCHDIR_DOWNWARDS))/max_depth
+
+            # print(f'max_depth is {max_depth}, getAvgBranchdepthCurrentRun are {SCIPvarGetAvgBranchdepthCurrentRun(var, SCIP_BRANCHDIR_UPWARDS)}, {SCIPvarGetAvgBranchdepthCurrentRun(var, SCIP_BRANCHDIR_DOWNWARDS)}')
+
             cand_branch_scores[0][cand_i] = varScore(SCIPgetVarConflictScore(scip, var), SCIPgetAvgConflictScore(scip))
             cand_branch_scores[1][cand_i] = varScore(SCIPgetVarConflictlengthScore(scip, var), SCIPgetAvgConflictlengthScore(scip))
             cand_branch_scores[2][cand_i] = varScore(SCIPgetVarAvgInferenceScore(scip, var), SCIPgetAvgInferenceScore(scip))
@@ -5237,7 +5240,7 @@ cdef class Model:
 
         cdef SCIP_Real lb_root = SCIPgetLowerboundRoot(scip)
 
-        current_node_feature[0] = float(depth/max_depth)
+        current_node_feature[0] = float(depth/SCIPgetMaxDepth(scip))
         current_node_feature[1] = float(SCIPgetPlungeDepth(scip))/max(1., depth)
         current_node_feature[2] = relDist(lower_bound, obj_val)
         current_node_feature[3] = relDist(lb_root, obj_val)
@@ -5261,7 +5264,7 @@ cdef class Model:
 
         depth_feature[0] = scip.stat.nactivatednodes/nnodes_
         depth_feature[1] = scip.stat.ndeactivatednodes/nnodes_
-        depth_feature[2] = SCIPgetPlungeDepth(scip)/max_depth
+        depth_feature[2] = SCIPgetPlungeDepth(scip)/SCIPgetMaxDepth(scip)
         depth_feature[3] = SCIPgetNBacktracks(scip)/nnodes_
 
         cdef SCIP_Real nlps = max(1., SCIPgetNLPs(scip))
