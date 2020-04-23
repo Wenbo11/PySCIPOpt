@@ -5240,7 +5240,7 @@ cdef class Model:
 
         cdef SCIP_Real lb_root = SCIPgetLowerboundRoot(scip)
 
-        current_node_feature[0] = float(depth/SCIPgetMaxDepth(scip))
+        current_node_feature[0] = float(depth/max_depth)
         current_node_feature[1] = float(SCIPgetPlungeDepth(scip))/max(1., depth)
         current_node_feature[2] = relDist(lower_bound, obj_val)
         current_node_feature[3] = relDist(lb_root, obj_val)
@@ -5264,7 +5264,7 @@ cdef class Model:
 
         depth_feature[0] = scip.stat.nactivatednodes/nnodes_
         depth_feature[1] = scip.stat.ndeactivatednodes/nnodes_
-        depth_feature[2] = SCIPgetPlungeDepth(scip)/SCIPgetMaxDepth(scip)
+        depth_feature[2] = SCIPgetPlungeDepth(scip)/max_depth
         depth_feature[3] = SCIPgetNBacktracks(scip)/nnodes_
 
         cdef SCIP_Real nlps = max(1., SCIPgetNLPs(scip))
@@ -5345,7 +5345,7 @@ cdef class Model:
         open_nodes_bounds[10] = np.std(open_lbs)/open_lbs_mean
         open_nodes_bounds[11] = (open_lbs_q3 - open_lbs_q1)/(open_lbs_q3 + open_lbs_q1 + 1e-10)
 
-        open_node_depths[0] = np.mean(open_ds)/SCIPgetMaxDepth(scip)
+        open_node_depths[0] = np.mean(open_ds)/max_depth
         open_node_depths[1] = relDist(open_ds_q1, open_ds_q3)
         open_node_depths[2] = np.std(open_ds)/np.mean(open_ds)
         open_node_depths[3] = (open_ds_q3 - open_ds_q1)/(open_ds_q3 + open_ds_q1 + 1e-10)
