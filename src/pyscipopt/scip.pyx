@@ -5178,6 +5178,8 @@ cdef class Model:
         cand_conflict_length = np.empty(shape=(2, ncands), dtype=np.float32)
         cand_inferences = np.empty(shape=(2, ncands), dtype=np.float32)
         cdef SCIP_Real max_depth = max(1, SCIPgetMaxDepth(scip))
+        cdef SCIP_Real pseudocost_up = 0
+        cdef SCIP_Real pseudocost_down = 0
 
     	# Candidate State
         for cand_i in range(ncands):
@@ -5201,10 +5203,10 @@ cdef class Model:
             cand_pc_stats[0][cand_i] = pseudocost_up/(SCIPgetPseudocostCount(scip, SCIP_BRANCHDIR_UPWARDS, False) + 1e-5)
             cand_pc_stats[1][cand_i] = pseudocost_down/(SCIPgetPseudocostCount(scip, SCIP_BRANCHDIR_DOWNWARDS, False) + 1e-5)
             cand_pc_stats[2][cand_i] = pseudocost_up/max(1, SCIPvarGetNBranchingsCurrentRun(var, SCIP_BRANCHDIR_UPWARDS))
-            cand_pc_stats[3][cand_i] = pseudocost_up/max(1, SCIPvarGetNBranchingsCurrentRun(var, SCIP_BRANCHDIR_DOWNWARDS))
+            cand_pc_stats[3][cand_i] = pseudocost_down/max(1, SCIPvarGetNBranchingsCurrentRun(var, SCIP_BRANCHDIR_DOWNWARDS))
             # 4 and 5 are left for branch_count
-            cand_pc_stats[4][cand_i] = pseudocost_up
-            cand_pc_stats[5][cand_i] = pseudocost_down
+            cand_pc_stats[4][cand_i] = pseudocost_up/max(1, SCIPvarGetNBranchings(var, SCIP_BRANCHDIR_UPWARDS))
+            cand_pc_stats[5][cand_i] = pseudocost_down/max(1, SCIPvarGetNBranchings(var, SCIP_BRANCHDIR_DOWNWARDS))
 
             cand_implications[0][cand_i] = SCIPvarGetNImpls(var, True)
             cand_implications[1][cand_i] = SCIPvarGetNImpls(var, False)
@@ -5226,7 +5228,7 @@ cdef class Model:
         cdef SCIP_Real upper_bound = SCIPgetUpperbound(scip)
         cdef SCIP_Real lower_bound = SCIPgetLowerbound(scip)
         cdef SCIP_Real obj_val = SCIPgetLPObjval(scip)
-        cdef int depth = SCIPnodeGetDepth(node)
+        cdef SCIP_Real depth = SCIPnodeGetDepth(node)
         
         current_node_feature = np.empty(shape=(8,), dtype=np.float32)
         nodes_feature = np.empty(shape=(8,), dtype=np.float32)
@@ -5240,7 +5242,7 @@ cdef class Model:
 
         cdef SCIP_Real lb_root = SCIPgetLowerboundRoot(scip)
 
-        current_node_feature[0] = float(depth/max_depth)
+        current_node_feature[0] = depth/max_depth
         current_node_feature[1] = float(SCIPgetPlungeDepth(scip))/max(1., depth)
         current_node_feature[2] = relDist(lower_bound, obj_val)
         current_node_feature[3] = relDist(lb_root, obj_val)
@@ -5323,7 +5325,7 @@ cdef class Model:
             open_lbs[nleaves+nchildren+i+1] = siblings[i].lowerbound
             open_ds[nleaves+nchildren+i+1] = siblings[i].depth
 
-        cdef float nopen = max(1., nleaves+nchildren+nsiblings+1)
+        cdef SCIP_Real nopen = max(1., nleaves+nchildren+nsiblings+1)
         cdef SCIP_Real open_lbs_max = max(open_lbs)
         cdef SCIP_Real open_lbs_min = min(open_lbs)
         cdef SCIP_Real open_lbs_mean = np.mean(open_lbs)
