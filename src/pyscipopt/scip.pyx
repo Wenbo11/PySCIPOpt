@@ -5349,7 +5349,7 @@ cdef class Model:
 
         open_node_depths[0] = np.mean(open_ds)/max_depth
         open_node_depths[1] = relDist(open_ds_q1, open_ds_q3)
-        open_node_depths[2] = np.std(open_ds)/np.mean(open_ds)
+        open_node_depths[2] = np.std(open_ds)/max(1., np.mean(open_ds))
         open_node_depths[3] = (open_ds_q3 - open_ds_q1)/(open_ds_q3 + open_ds_q1 + 1e-10)
 
         return {'node_feature': np.concatenate((cand_sols, cand_branch_depth, cand_branch_scores, cand_pc_stats,\
