@@ -5248,7 +5248,7 @@ cdef class Model:
         current_node_feature[3] = relDist(lb_root, obj_val)
         current_node_feature[4] = relDist(upper_bound, obj_val)
         current_node_feature[5] = relPos(obj_val, upper_bound, lower_bound)
-        current_node_feature[6] = float(ncands)/max(1., (SCIPgetNVars(scip) - ncands))
+        current_node_feature[6] = float(ncands)/max(1., sum([cand.vtype()!="CONTINUOUS" for cand in candidates]))
         current_node_feature[7] = float(SCIPdomchgGetNBoundchgs(SCIPnodeGetDomchg(node)))/max(1., SCIPgetNVars(scip))
         
         cdef SCIP_Real nleaves_ = max(1., SCIPgetNLeaves(scip))
@@ -5484,7 +5484,7 @@ cdef class Model:
         current_node_feature[3] = relDist(lb_root, obj_val)
         current_node_feature[4] = relDist(upper_bound, obj_val)
         current_node_feature[5] = relPos(obj_val, upper_bound, lower_bound)
-        current_node_feature[6] = float(ncands)/max(1., (SCIPgetNVars(scip) - ncands))
+        current_node_feature[6] = float(ncands)/max(1., sum([cand.vtype()!="CONTINUOUS" for cand in candidates]))
         current_node_feature[7] = float(SCIPdomchgGetNBoundchgs(SCIPnodeGetDomchg(node)))/max(1., SCIPgetNVars(scip))
        	
         nodes_feature[0] = SCIPgetNObjlimLeaves(scip)/nleaves_
