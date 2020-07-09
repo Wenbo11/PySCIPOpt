@@ -1752,7 +1752,7 @@ cdef extern from "scip/pub_lp.h":
 
 cdef extern from "scip/lp.h":
     SCIP_Real SCIPlpGetObjNorm(SCIP_LP* lp)
-    void SCIPlpRecalculateObjSqrNorm(SCIP_SET* set, SCIP_LP* lp)
+    # void SCIPlpRecalculateObjSqrNorm(SCIP_SET* set, SCIP_LP* lp)
     SCIP_Real SCIProwGetNorm(SCIP_ROW* row)
     SCIP_Real SCIProwGetDualsol(SCIP_ROW* row)
     int SCIProwGetAge(SCIP_ROW* row)
