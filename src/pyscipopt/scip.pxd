@@ -372,6 +372,9 @@ cdef extern from "scip/scip.h":
 
     ctypedef struct SCIP_NODESEL:
         pass
+    # ctypedef struct SCIP_NODESEL:
+    #     char* name
+    #     SCIP_RETCODE (*nodeselselect)(SCIP* scip, SCIP_NODESEL* nodesel, SCIP_NODE** selnode)   
 
     ctypedef struct SCIP_NODESELDATA:
         pass
@@ -1104,6 +1107,7 @@ cdef extern from "scip/scip.h":
     SCIP_BRANCHRULEDATA* SCIPbranchruleGetData(SCIP_BRANCHRULE* branchrule)
     const char* SCIPbranchruleGetName(SCIP_BRANCHRULE* branchrule)
     SCIP_BRANCHRULE* SCIPfindBranchrule(SCIP* scip, const char*  name)
+    SCIP_NODESEL* SCIPfindNodesel(SCIP* scip, const char* name) 
 
     # Benders' decomposition plugin
     SCIP_RETCODE SCIPincludeBenders(SCIP* scip,

@@ -4574,6 +4574,19 @@ cdef class Model:
             branchrule.branchexeclp(self._scip, branchrule, allowaddcons, &result)
             return result
 
+    # def executeNodeSel(self, str name):
+    #     cdef SCIP_NODESEL* nodesel
+    #     cdef SCIP_NODE* selnode
+
+    #     nodesel = SCIPfindNodesel(self._scip, name.encode("UTF-8"))
+    #     if nodesel == NULL:
+    #         print("Error, nodesel not found!")
+    #         return PY_SCIP_RESULT.DIDNOTFIND
+    #     else:
+    #         nodesel.nodeselselect(self._scip, nodesel, &selnode)
+    #         return Node.create(selnode)
+
+
     def getVanillafullstrongData(self):
         cdef SCIP_VAR** cands
         cdef SCIP_Real* candscores
@@ -5041,6 +5054,14 @@ cdef class Model:
             'solvingtime': SCIPgetSolvingTime(scip),
         }
 
+    def getVariablePseudocost(self, variable):
+        cdef float ps_up, ps_down
+        cdef SCIP_VAR* scip_var = (<Variable>variable).scip_var
+
+        ps_up = SCIPgetVarPseudocost(self._scip, scip_var, SCIP_BRANCHDIR_UPWARDS)
+        ps_down = SCIPgetVarPseudocost(self._scip, scip_var, SCIP_BRANCHDIR_DOWNWARDS)
+        return ps_up * ps_down
+    
 # debugging memory management
 def is_memory_freed():
     return BMSgetMemoryUsed() == 0
