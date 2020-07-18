@@ -3611,6 +3611,20 @@ cdef class Model:
                 [lpcandsfrac[i] for i in range(nlpcands)], nlpcands, npriolpcands, nfracimplvars)
 
 
+    def getPseudoBranchCands(self):
+        """gets branching candidates for pseudo solution branching (non-fixed variables) along with the number of candidates
+        :return tuple (pseudocands, npseudocands, npriopseudocands) where
+            pseudocands:      list of pseudo branching variable candidates
+            npriopseudocands: number of candidates with maximal priority
+        """
+        cdef SCIP_VAR** cands
+        cdef int ncands
+        cdef int npriocands
+
+        PY_SCIP_CALL(SCIPgetPseudoBranchCands(self._scip, &cands, &ncands, &npriocands))
+
+        return ([Variable.create(cands[i]) for i in range(ncands)], npriocands)
+
     def branchVar(self, variable):
         """Branch on a non-continuous variable.
 
