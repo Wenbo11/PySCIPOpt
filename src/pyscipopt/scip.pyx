@@ -5084,6 +5084,12 @@ cdef class Model:
         ps_down = SCIPgetVarPseudocost(self._scip, scip_var, SCIP_BRANCHDIR_DOWNWARDS)
         return ps_up * ps_down
     
+    def getVarConflictScore(self, Variable var):
+        """ returns the variable's conflict score value """
+        return SCIPgetVarConflictScore(self._scip, var.scip_var)
+
+    def getVarAvgInferenceScore(self, Variable var):
+        return SCIPgetVarAvgInferenceScore(self._scip, var.scip_var)
 # debugging memory management
 def is_memory_freed():
     return BMSgetMemoryUsed() == 0
