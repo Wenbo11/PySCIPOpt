@@ -1,6 +1,7 @@
 from setuptools import setup, Extension
 import os, platform, sys, re
 import numpy
+
 # look for environment variable that specifies path to SCIP
 scipoptdir = os.environ.get('SCIPOPTDIR', '').strip('"')
 
