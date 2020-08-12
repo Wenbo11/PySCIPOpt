@@ -1,6 +1,6 @@
 from setuptools import setup, Extension
 import os, platform, sys, re
-
+import numpy
 # look for environment variable that specifies path to SCIP
 scipoptdir = os.environ.get('SCIPOPTDIR', '').strip('"')
 
@@ -63,7 +63,7 @@ if not os.path.exists(os.path.join(packagedir, 'scip.pyx')):
 ext = '.pyx' if cythonize else '.c'
 
 extensions = [Extension('pyscipopt.scip', [os.path.join(packagedir, 'scip'+ext)],
-                          include_dirs=[includedir],
+                          include_dirs=[includedir, numpy.get_include()],
                           library_dirs=[libdir],
                           libraries=[libname],
                           extra_compile_args = extra_compile_args,
@@ -98,5 +98,6 @@ setup(
     ext_modules = extensions,
     packages = ['pyscipopt'],
     package_dir = {'pyscipopt': packagedir},
-    package_data = {'pyscipopt': ['scip.pyx', 'scip.pxd', '*.pxi']}
+    package_data = {'pyscipopt': ['scip.pyx', 'scip.pxd', '*.pxi']},
+    include_dirs=[numpy.get_include()]
 )

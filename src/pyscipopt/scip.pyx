@@ -5068,6 +5068,14 @@ cdef class Model:
             'solvingtime': SCIPgetSolvingTime(scip),
         }
 
+    def getBranchScoreMultiple(self, Variable var, nchildren, py_gains):
+        cdef SCIP_Real gains[3]
+        gains[0] = float(py_gains[0])
+        gains[1] = float(py_gains[1])
+        gains[2] = float(py_gains[2])
+        score = SCIPgetBranchScoreMultiple(self._scip, var.scip_var, <int>nchildren, gains)
+        return score
+        
     def getVariablePseudocost(self, variable):
         cdef float ps_up, ps_down
         cdef SCIP_VAR* scip_var = (<Variable>variable).scip_var

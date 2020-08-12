@@ -1108,6 +1108,10 @@ cdef extern from "scip/scip.h":
     const char* SCIPbranchruleGetName(SCIP_BRANCHRULE* branchrule)
     SCIP_BRANCHRULE* SCIPfindBranchrule(SCIP* scip, const char*  name)
     SCIP_NODESEL* SCIPfindNodesel(SCIP* scip, const char* name) 
+    SCIP_Real SCIPgetBranchScoreMultiple(SCIP *     scip,
+                                         SCIP_VAR *     var,
+                                         int    nchildren,
+                                         SCIP_Real *    gains)
 
     # Benders' decomposition plugin
     SCIP_RETCODE SCIPincludeBenders(SCIP* scip,
