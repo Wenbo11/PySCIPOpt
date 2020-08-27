@@ -34,7 +34,7 @@ include "nodesel.pxi"
 # recommended SCIP version; major version is required
 MAJOR = 7
 MINOR = 0
-PATCH = 1
+PATCH = 0
 
 # for external user functions use def; for functions used only inside the interface (starting with _) use cdef
 # todo: check whether this is currently done like this
@@ -5075,6 +5075,15 @@ cdef class Model:
         ps_up = SCIPgetVarPseudocost(self._scip, scip_var, SCIP_BRANCHDIR_UPWARDS)
         ps_down = SCIPgetVarPseudocost(self._scip, scip_var, SCIP_BRANCHDIR_DOWNWARDS)
         return ps_up * ps_down
+
+    def getRowMaxActivity(self, Row row):
+        """returns the maximal activity of a row w.r.t. the column's bounds"""
+        return SCIPgetRowMaxActivity(self._scip, row.scip_row)
+
+    def getRowMinActivity(self, Row row):
+        """returns the minimal activity of a row w.r.t. the column's bounds"""
+        return SCIPgetRowMinActivity(self._scip, row.scip_row)
+
     
 # debugging memory management
 def is_memory_freed():
