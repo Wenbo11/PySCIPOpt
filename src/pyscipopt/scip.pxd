@@ -837,6 +837,8 @@ cdef extern from "scip/scip.h":
     SCIP_RETCODE SCIPcreateEmptyRowSepa(SCIP* scip, SCIP_ROW** row, SCIP_SEPA* sepa, const char* name, SCIP_Real lhs, SCIP_Real rhs, SCIP_Bool local, SCIP_Bool modifiable, SCIP_Bool removable)
     SCIP_RETCODE SCIPcreateEmptyRowUnspec(SCIP* scip, SCIP_ROW** row, const char* name, SCIP_Real lhs, SCIP_Real rhs, SCIP_Bool local, SCIP_Bool modifiable, SCIP_Bool removable)
     SCIP_Real SCIPgetRowActivity(SCIP* scip, SCIP_ROW* row)
+    SCIP_Real SCIPgetRowMaxActivity(SCIP*  scip, SCIP_ROW*  row)
+    SCIP_Real SCIPgetRowMinActivity(SCIP*  scip, SCIP_ROW*  row)      
     SCIP_Real SCIPgetRowLPActivity(SCIP* scip, SCIP_ROW* row)
     SCIP_RETCODE SCIPreleaseRow(SCIP* scip, SCIP_ROW** row)
     SCIP_RETCODE SCIPcacheRowExtensions(SCIP* scip, SCIP_ROW* row)
