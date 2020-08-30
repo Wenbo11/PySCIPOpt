@@ -5156,17 +5156,17 @@ cdef class Model:
                     
                     nefficient_col = 0
                     for k in range(row_nnzrs[i]):
-                    	# if the col is not redundant
-                    	var = row_cols[k].getVar()
-                    	if var.getUbGlobal() - var.getLbLocal() >= 0.0005:
-	                        coef_colidxs[j+nefficient_col] = SCIPcolGetLPPos(row_cols[k])
-	                        coef_rowidxs[j+nefficient_col] = i
-	                        coef_vals[j+nefficient_col] = row_vals[k]
-	                        nefficient_col += 1
-	                
-	                # nefficient_row += 1
-                	j += nefficient_col
-                	
+                        # if the col is not redundant
+                        var = SCIPcolGetVar(row_cols[k])
+                        if SCIPvarGetUbLocal(var) - SCIPvarGetLbLocal(var) >= 0.0005:
+                            coef_colidxs[j+nefficient_col] = SCIPcolGetLPPos(row_cols[k])
+                            coef_rowidxs[j+nefficient_col] = i
+                            coef_vals[j+nefficient_col] = row_vals[k]
+                            nefficient_col += 1
+                    
+                    # nefficient_row += 1
+                    j += nefficient_col
+                    
             coef_colidxs = coef_colidxs[:j]
             coef_rowidxs = coef_rowidxs[:j]
             coef_vals = coef_vals[:j]
