@@ -4758,7 +4758,7 @@ cdef class Model:
             row_ages          = np.empty(shape=(nrows, ), dtype=np.int32)
             row_activities    = np.empty(shape=(nrows, ), dtype=np.float32)
             row_objcossims    = np.empty(shape=(nrows, ), dtype=np.float32)
-            # row_norms         = np.empty(shape=(nrows, ), dtype=np.float32)
+            row_norms         = np.empty(shape=(nrows, ), dtype=np.float32)
             row_is_at_lhs     = np.empty(shape=(nrows, ), dtype=np.int32)
             row_is_at_rhs     = np.empty(shape=(nrows, ), dtype=np.int32)
             row_is_local      = np.empty(shape=(nrows, ), dtype=np.int32)
