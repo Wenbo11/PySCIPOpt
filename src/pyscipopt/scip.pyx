@@ -4819,7 +4819,7 @@ cdef class Model:
                 row_objcossims[i] = rows[i].objprod / SQRT(prod) if SCIPisPositive(scip, prod) else 0.0
 
                 # L2 norm
-                # row_norms[i] = SCIProwGetNorm(rows[i])  # cst ?
+                row_norms[i] = SCIProwGetNorm(rows[i])  # cst ?
 
             # Dual solution
             row_dualsols[i] = SCIProwGetDualsol(rows[i])
