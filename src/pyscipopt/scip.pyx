@@ -4758,7 +4758,7 @@ cdef class Model:
             row_ages          = np.empty(shape=(nrows, ), dtype=np.int32)
             row_activities    = np.empty(shape=(nrows, ), dtype=np.float32)
             row_objcossims    = np.empty(shape=(nrows, ), dtype=np.float32)
-            row_norms         = np.empty(shape=(nrows, ), dtype=np.float32)
+            # row_norms         = np.empty(shape=(nrows, ), dtype=np.float32)
             row_is_at_lhs     = np.empty(shape=(nrows, ), dtype=np.int32)
             row_is_at_rhs     = np.empty(shape=(nrows, ), dtype=np.int32)
             row_is_local      = np.empty(shape=(nrows, ), dtype=np.int32)
@@ -4819,7 +4819,7 @@ cdef class Model:
                 row_objcossims[i] = rows[i].objprod / SQRT(prod) if SCIPisPositive(scip, prod) else 0.0
 
                 # L2 norm
-                row_norms[i] = SCIProwGetNorm(rows[i])  # cst ?
+                # row_norms[i] = SCIProwGetNorm(rows[i])  # cst ?
 
             # Dual solution
             row_dualsols[i] = SCIProwGetDualsol(rows[i])
@@ -4934,8 +4934,8 @@ cdef class Model:
         cdef np.ndarray[np.float32_t, ndim=1] col_solfracs
         cdef np.ndarray[np.int32_t,   ndim=1] col_sol_is_at_lb
         cdef np.ndarray[np.int32_t,   ndim=1] col_sol_is_at_ub
-        cdef np.ndarray[np.float32_t, ndim=1] col_incvals
-        cdef np.ndarray[np.float32_t, ndim=1] col_avgincvals
+        # cdef np.ndarray[np.float32_t, ndim=1] col_incvals
+        # cdef np.ndarray[np.float32_t, ndim=1] col_avgincvals
 
         if not update:
             col_types        = np.empty(shape=(ncols, ), dtype=np.int32)
@@ -4949,8 +4949,8 @@ cdef class Model:
             col_solfracs     = np.empty(shape=(ncols, ), dtype=np.float32)
             col_sol_is_at_lb = np.empty(shape=(ncols, ), dtype=np.int32)
             col_sol_is_at_ub = np.empty(shape=(ncols, ), dtype=np.int32)
-            col_incvals      = np.empty(shape=(ncols, ), dtype=np.float32)
-            col_avgincvals   = np.empty(shape=(ncols, ), dtype=np.float32)
+            # col_incvals      = np.empty(shape=(ncols, ), dtype=np.float32)
+            # col_avgincvals   = np.empty(shape=(ncols, ), dtype=np.float32)
         else:
             col_types        = prev_state['col']['types']
             col_coefs        = prev_state['col']['coefs']
@@ -4963,8 +4963,8 @@ cdef class Model:
             col_solfracs     = prev_state['col']['solfracs']
             col_sol_is_at_lb = prev_state['col']['sol_is_at_lb']
             col_sol_is_at_ub = prev_state['col']['sol_is_at_ub']
-            col_incvals      = prev_state['col']['incvals']
-            col_avgincvals   = prev_state['col']['avgincvals']
+            # col_incvals      = prev_state['col']['incvals']
+            # col_avgincvals   = prev_state['col']['avgincvals']
 
         cdef SCIP_SOL* sol = SCIPgetBestSol(scip)
         cdef SCIP_VAR* var
@@ -4982,7 +4982,10 @@ cdef class Model:
                 col_types[col_i] = SCIPvarGetType(var)
 
                 # Objective coefficient
-                col_coefs[col_i] = SCIPcolGetObj(cols[i])
+                if ub - lb >= 0.0005:
+                    col_coefs[col_i] = SCIPcolGetObj(cols[i])
+                else:
+                    col_coefs[col_i] = 0
 
             # Lower bound
             if SCIPisInfinity(scip, REALABS(lb)):
@@ -5012,12 +5015,12 @@ cdef class Model:
             col_sol_is_at_ub[col_i] = SCIPisEQ(scip, solval, ub)
 
             # Incumbent solution value
-            if sol is NULL:
-                col_incvals[col_i] = NAN
-                col_avgincvals[col_i] = NAN
-            else:
-                col_incvals[col_i] = SCIPgetSolVal(scip, sol, var)
-                col_avgincvals[col_i] = SCIPvarGetAvgSol(var)
+            # if sol is NULL:
+            #     col_incvals[col_i] = NAN
+            #     col_avgincvals[col_i] = NAN
+            # else:
+            #     col_incvals[col_i] = SCIPgetSolVal(scip, sol, var)
+            #     col_avgincvals[col_i] = SCIPvarGetAvgSol(var)
 
 
         # ROWS
@@ -5103,7 +5106,7 @@ cdef class Model:
 
                 # Objective cosine similarity - inspired from SCIProwGetObjParallelism()
                 # SCIPlpRecalculateObjSqrNorm(scip.set, scip.lp)
-                obj_norm = SCIPgetObjNorm(scip)
+                # obj_norm = SCIPgetObjNorm(scip)
                 prod = rows[i].sqrnorm * scip.lp.objsqrnorm
                 row_objcossims[i] = rows[i].objprod / SQRT(prod) if SCIPisPositive(scip, prod) else 0.0
 
@@ -5157,8 +5160,7 @@ cdef class Model:
                     nefficient_col = 0
                     for k in range(row_nnzrs[i]):
                         # if the col is not redundant
-                        var = SCIPcolGetVar(row_cols[k])
-                        if SCIPvarGetUbLocal(var) - SCIPvarGetLbLocal(var) >= 0.0005:
+                        if SCIPcolGetUb(cols[k]) - SCIPcolGetLb(cols[k]) >= 0.005:
                             coef_colidxs[j+nefficient_col] = SCIPcolGetLPPos(row_cols[k])
                             coef_rowidxs[j+nefficient_col] = i
                             coef_vals[j+nefficient_col] = row_vals[k]
@@ -5185,8 +5187,8 @@ cdef class Model:
                 'solfracs':     col_solfracs,
                 'sol_is_at_lb': col_sol_is_at_lb,
                 'sol_is_at_ub': col_sol_is_at_ub,
-                'incvals':      col_incvals,
-                'avgincvals':   col_avgincvals,
+                # 'incvals':      col_incvals,
+                # 'avgincvals':   col_avgincvals,
             },
             'row': {
                 'lhss':          row_lhss,
