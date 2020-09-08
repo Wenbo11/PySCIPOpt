@@ -5153,7 +5153,7 @@ cdef class Model:
             for i in range(nrows):
                 row_norms[i] = 0
                 # if the row is not redundant
-                if SCIPgetRowMaxActivity(scip, rows[i]) >= SCIProwGetRhs(rows[i]) or SCIPgetRowMinActivity(scip, rows[i]) <= SCIProwGetLhs(rows[i]):
+                if SCIPgetRowMaxActivity(scip, rows[i]) >= row_rhss[i] or SCIPgetRowMinActivity(scip, rows[i]) <= row_lhss[i]:
                     # coefficient indexes and values
                     row_cols = SCIProwGetCols(rows[i])
                     row_vals = SCIProwGetVals(rows[i])
@@ -5161,7 +5161,7 @@ cdef class Model:
                     nefficient_col = 0
                     for k in range(row_nnzrs[i]):
                         # if the col is not redundant
-                        if SCIPcolGetUb(cols[k]) - SCIPcolGetLb(cols[k]) >= 0.005:
+                        if SCIPcolGetUb(row_cols[k]) != SCIPcolGetLb(row_cols[k]):
                             coef_colidxs[j+nefficient_col] = SCIPcolGetLPPos(row_cols[k])
                             coef_rowidxs[j+nefficient_col] = i
                             coef_vals[j+nefficient_col] = row_vals[k]
