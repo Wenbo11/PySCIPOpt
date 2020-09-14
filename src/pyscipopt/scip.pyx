@@ -5218,6 +5218,7 @@ cdef class Model:
             },
         }
 
+
     def getSolvingStats(self):
         cdef SCIP* scip = self._scip
 
@@ -5389,6 +5390,14 @@ cdef class Model:
     def getRowMinActivity(self, Row row):
         """returns the minimal activity of a row w.r.t. the column's bounds"""
         return SCIPgetRowMinActivity(self._scip, row.scip_row)
+
+    def getNStrongbranchs(self):
+        '''gets total number of times, strong branching was called (each call represents solving two LPs)'''
+        return SCIPgetNStrongbranchs(self._scip)
+
+    def getNNodeLPs(self):
+        '''gets total number of LPs solved so far for node relaxations'''
+        return SCIPgetNNodeLPs(self._scip)
 
     
 # debugging memory management
