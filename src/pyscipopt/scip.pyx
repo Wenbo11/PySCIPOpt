@@ -4813,6 +4813,7 @@ cdef class Model:
             row_rhss          = np.empty(shape=(nrows, ), dtype=np.float32)
             row_nnzrs         = np.empty(shape=(nrows, ), dtype=np.int32)
             row_dualsols      = np.empty(shape=(nrows, ), dtype=np.float32)
+            is_active         = np.empty(shape=(nrows, ), dtype=np.int32)
             # row_basestats     = np.empty(shape=(nrows, ), dtype=np.int32)
             row_ages          = np.empty(shape=(nrows, ), dtype=np.int32)
             row_activities    = np.empty(shape=(nrows, ), dtype=np.float32)
@@ -4854,7 +4855,10 @@ cdef class Model:
                 row_nnzrs[i] = SCIProwGetNLPNonz(rows[i])
 
                 if SCIPgetRowMaxActivity(scip, rows[i]) >= SCIProwGetRhs(rows[i]) or SCIPgetRowMinActivity(scip, rows[i]) <= SCIProwGetLhs(rows[i]):
+                    is_active[i] = 1
                     nnzrs += row_nnzrs[i]
+                else:
+                    is_active[i] = 0
 
                 # left-hand-side
                 if SCIPisInfinity(scip, REALABS(lhs)):
@@ -4922,7 +4926,7 @@ cdef class Model:
             for i in range(nrows):
                 row_norms[i] = 0
                 # if the row is not redundant
-                if SCIPgetRowMaxActivity(scip, rows[i]) - SCIProwGetConstant(rows[i]) >= row_rhss[i] or SCIPgetRowMinActivity(scip, rows[i]) - SCIProwGetConstant(rows[i]) <= row_lhss[i]:
+                if is_active[i]:
                     # coefficient indexes and values
                     row_cols = SCIProwGetCols(rows[i])
                     row_vals = SCIProwGetVals(rows[i])
