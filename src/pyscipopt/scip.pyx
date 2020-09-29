@@ -3871,6 +3871,15 @@ cdef class Model:
 
         return sols
 
+    def getSolNodenum(self, Solution sol):
+        _sol = <SCIP_SOL*> sol.sol
+        return SCIPsolGetNodenum(_sol)
+
+    def getSolDepth(self, Solution sol):
+        """gets node's depth, where this solution was found"""
+        _sol = <SCIP_SOL*> sol.sol
+        return SCIPsolGetDepth(_sol)
+
     def getBestSol(self):
         """Retrieve currently best known feasible primal solution."""
         self._bestSol = Solution.create(self._scip, SCIPgetBestSol(self._scip))
