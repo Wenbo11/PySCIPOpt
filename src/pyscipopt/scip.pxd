@@ -1283,6 +1283,7 @@ cdef extern from "scip/scip.h":
     SCIP_Real SCIPgetFirstPrimalBound(SCIP* scip)
     SCIP_Real SCIPgetUpperbound(SCIP* scip)
     SCIP_Real SCIPgetCutoffbound(SCIP* scip)
+    SCIP_RETCODE SCIPupdateCutoffbound(SCIP* scip, SCIP_Real cutoffbound)
     SCIP_Bool SCIPisPrimalboundSol(SCIP* scip)
     SCIP_Real SCIPgetTransGap(SCIP* scip)
     SCIP_Longint SCIPgetNSolsFound(SCIP* scip)

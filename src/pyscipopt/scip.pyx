@@ -5854,6 +5854,9 @@ cdef class Model:
         '''gets total number of LPs solved so far for node relaxations'''
         return SCIPgetNNodeLPs(self._scip)
 
+    def updateCutoffbound(self, cutoffbound):
+        PY_SCIP_CALL(SCIPupdateCutoffbound(self._scip, cutoffbound))
+
     
 # debugging memory management
 def is_memory_freed():
