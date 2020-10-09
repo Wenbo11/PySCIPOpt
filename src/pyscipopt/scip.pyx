@@ -689,6 +689,20 @@ cdef class Node:
                                     &nbranchvars, 0)
         return nbranchvars
 
+    def getNAncestorBranchings(self):
+        """Retrieve the number of variable branchings that were performed in the parent node to create this node."""
+        cdef SCIP_VAR* dummy_branchvars
+        cdef SCIP_Real dummy_branchbounds
+        cdef SCIP_BOUNDTYPE dummy_boundtypes
+        cdef int nbranchvars
+        # This is a hack: the SCIP interface has no function to directly get the
+        # number of parent branchings, i.e., SCIPnodeGetNParentBranchings() does
+        # not exist.
+        SCIPnodeGetAncestorBranchings(self.scip_node, &dummy_branchvars,
+                                    &dummy_branchbounds, &dummy_boundtypes,
+                                    &nbranchvars, 0)
+        return nbranchvars
+
     def getParentBranchings(self):
         """Retrieve the set of variable branchings that were performed in the parent node to create this node."""
         cdef int nbranchvars = self.getNParentBranchings()
@@ -700,6 +714,28 @@ cdef class Node:
         cdef SCIP_BOUNDTYPE* boundtypes = <SCIP_BOUNDTYPE*> malloc(nbranchvars * sizeof(SCIP_BOUNDTYPE))
 
         SCIPnodeGetParentBranchings(self.scip_node, branchvars, branchbounds,
+                                    boundtypes, &nbranchvars, nbranchvars)
+
+        py_variables = [Variable.create(branchvars[i]) for i in range(nbranchvars)]
+        py_branchbounds = [branchbounds[i] for i in range(nbranchvars)]
+        py_boundtypes = [boundtypes[i] for i in range(nbranchvars)]
+
+        free(boundtypes)
+        free(branchbounds)
+        free(branchvars)
+        return py_variables, py_branchbounds, py_boundtypes
+
+    def getAncestorBranchings(self):
+        """Retrieve the set of variable branchings that were performed in the parent node to create this node."""
+        cdef int nbranchvars = self.getNAncestorBranchings()
+        if nbranchvars == 0:
+            return None
+
+        cdef SCIP_VAR** branchvars = <SCIP_VAR**> malloc(nbranchvars * sizeof(SCIP_VAR*))
+        cdef SCIP_Real* branchbounds = <SCIP_Real*> malloc(nbranchvars * sizeof(SCIP_Real))
+        cdef SCIP_BOUNDTYPE* boundtypes = <SCIP_BOUNDTYPE*> malloc(nbranchvars * sizeof(SCIP_BOUNDTYPE))
+
+        SCIPnodeGetAncestorBranchings(self.scip_node, branchvars, branchbounds,
                                     boundtypes, &nbranchvars, nbranchvars)
 
         py_variables = [Variable.create(branchvars[i]) for i in range(nbranchvars)]
@@ -5856,6 +5892,9 @@ cdef class Model:
 
     def updateCutoffbound(self, cutoffbound):
         PY_SCIP_CALL(SCIPupdateCutoffbound(self._scip, cutoffbound))
+
+    def getCutoffbound(self):
+        return SCIPgetCutoffbound(self._scip)
 
     
 # debugging memory management

@@ -675,6 +675,12 @@ cdef extern from "scip/scip.h":
                                      SCIP_BOUNDTYPE* boundtypes,
                                      int* nbranchvars,
                                      int branchvarssize)
+    void SCIPnodeGetAncestorBranchings(SCIP_NODE* node,
+                                     SCIP_VAR** branchvars,
+                                     SCIP_Real* branchbounds,
+                                     SCIP_BOUNDTYPE* boundtypes,
+                                     int* nbranchvars,
+                                     int branchvarssize)
     void SCIPnodeGetAddedConss(SCIP_NODE* node, SCIP_CONS** addedconss,
                                int* naddedconss, int addedconsssize)
     void SCIPnodeGetNDomchg(SCIP_NODE* node, int* nbranchings, int* nconsprop,
