@@ -675,6 +675,12 @@ cdef extern from "scip/scip.h":
                                      SCIP_BOUNDTYPE* boundtypes,
                                      int* nbranchvars,
                                      int branchvarssize)
+    void SCIPnodeGetAncestorBranchings(SCIP_NODE* node,
+                                     SCIP_VAR** branchvars,
+                                     SCIP_Real* branchbounds,
+                                     SCIP_BOUNDTYPE* boundtypes,
+                                     int* nbranchvars,
+                                     int branchvarssize)
     void SCIPnodeGetAddedConss(SCIP_NODE* node, SCIP_CONS** addedconss,
                                int* naddedconss, int addedconsssize)
     void SCIPnodeGetNDomchg(SCIP_NODE* node, int* nbranchings, int* nconsprop,
@@ -821,6 +827,8 @@ cdef extern from "scip/scip.h":
     SCIP_Real SCIPgetPrimalbound(SCIP* scip)
     SCIP_Real SCIPgetGap(SCIP* scip)
     int SCIPgetDepth(SCIP* scip)
+    int SCIPsolGetDepth(SCIP_SOL* sol)
+    int SCIPsolGetNodenum(SCIP_SOL* sol)
     SCIP_RETCODE SCIPaddSolFree(SCIP* scip, SCIP_SOL** sol, SCIP_Bool* stored)
     SCIP_RETCODE SCIPaddSol(SCIP* scip, SCIP_SOL* sol, SCIP_Bool* stored)
     SCIP_RETCODE SCIPreadSol(SCIP* scip, const char* filename)
@@ -837,6 +845,8 @@ cdef extern from "scip/scip.h":
     SCIP_RETCODE SCIPcreateEmptyRowSepa(SCIP* scip, SCIP_ROW** row, SCIP_SEPA* sepa, const char* name, SCIP_Real lhs, SCIP_Real rhs, SCIP_Bool local, SCIP_Bool modifiable, SCIP_Bool removable)
     SCIP_RETCODE SCIPcreateEmptyRowUnspec(SCIP* scip, SCIP_ROW** row, const char* name, SCIP_Real lhs, SCIP_Real rhs, SCIP_Bool local, SCIP_Bool modifiable, SCIP_Bool removable)
     SCIP_Real SCIPgetRowActivity(SCIP* scip, SCIP_ROW* row)
+    SCIP_Real SCIPgetRowMaxActivity(SCIP*  scip, SCIP_ROW*  row)
+    SCIP_Real SCIPgetRowMinActivity(SCIP*  scip, SCIP_ROW*  row)      
     SCIP_Real SCIPgetRowLPActivity(SCIP* scip, SCIP_ROW* row)
     SCIP_RETCODE SCIPreleaseRow(SCIP* scip, SCIP_ROW** row)
     SCIP_RETCODE SCIPcacheRowExtensions(SCIP* scip, SCIP_ROW* row)
@@ -1283,6 +1293,7 @@ cdef extern from "scip/scip.h":
     SCIP_Real SCIPgetFirstPrimalBound(SCIP* scip)
     SCIP_Real SCIPgetUpperbound(SCIP* scip)
     SCIP_Real SCIPgetCutoffbound(SCIP* scip)
+    SCIP_RETCODE SCIPupdateCutoffbound(SCIP* scip, SCIP_Real cutoffbound)
     SCIP_Bool SCIPisPrimalboundSol(SCIP* scip)
     SCIP_Real SCIPgetTransGap(SCIP* scip)
     SCIP_Longint SCIPgetNSolsFound(SCIP* scip)

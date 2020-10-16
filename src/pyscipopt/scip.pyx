@@ -34,7 +34,7 @@ include "nodesel.pxi"
 # recommended SCIP version; major version is required
 MAJOR = 7
 MINOR = 0
-PATCH = 1
+PATCH = 0
 
 # for external user functions use def; for functions used only inside the interface (starting with _) use cdef
 # todo: check whether this is currently done like this
@@ -689,6 +689,20 @@ cdef class Node:
                                     &nbranchvars, 0)
         return nbranchvars
 
+    def getNAncestorBranchings(self):
+        """Retrieve the number of variable branchings that were performed in the parent node to create this node."""
+        cdef SCIP_VAR* dummy_branchvars
+        cdef SCIP_Real dummy_branchbounds
+        cdef SCIP_BOUNDTYPE dummy_boundtypes
+        cdef int nbranchvars
+        # This is a hack: the SCIP interface has no function to directly get the
+        # number of parent branchings, i.e., SCIPnodeGetNParentBranchings() does
+        # not exist.
+        SCIPnodeGetAncestorBranchings(self.scip_node, &dummy_branchvars,
+                                    &dummy_branchbounds, &dummy_boundtypes,
+                                    &nbranchvars, 0)
+        return nbranchvars
+
     def getParentBranchings(self):
         """Retrieve the set of variable branchings that were performed in the parent node to create this node."""
         cdef int nbranchvars = self.getNParentBranchings()
@@ -700,6 +714,28 @@ cdef class Node:
         cdef SCIP_BOUNDTYPE* boundtypes = <SCIP_BOUNDTYPE*> malloc(nbranchvars * sizeof(SCIP_BOUNDTYPE))
 
         SCIPnodeGetParentBranchings(self.scip_node, branchvars, branchbounds,
+                                    boundtypes, &nbranchvars, nbranchvars)
+
+        py_variables = [Variable.create(branchvars[i]) for i in range(nbranchvars)]
+        py_branchbounds = [branchbounds[i] for i in range(nbranchvars)]
+        py_boundtypes = [boundtypes[i] for i in range(nbranchvars)]
+
+        free(boundtypes)
+        free(branchbounds)
+        free(branchvars)
+        return py_variables, py_branchbounds, py_boundtypes
+
+    def getAncestorBranchings(self):
+        """Retrieve the set of variable branchings that were performed in the parent node to create this node."""
+        cdef int nbranchvars = self.getNAncestorBranchings()
+        if nbranchvars == 0:
+            return None
+
+        cdef SCIP_VAR** branchvars = <SCIP_VAR**> malloc(nbranchvars * sizeof(SCIP_VAR*))
+        cdef SCIP_Real* branchbounds = <SCIP_Real*> malloc(nbranchvars * sizeof(SCIP_Real))
+        cdef SCIP_BOUNDTYPE* boundtypes = <SCIP_BOUNDTYPE*> malloc(nbranchvars * sizeof(SCIP_BOUNDTYPE))
+
+        SCIPnodeGetAncestorBranchings(self.scip_node, branchvars, branchbounds,
                                     boundtypes, &nbranchvars, nbranchvars)
 
         py_variables = [Variable.create(branchvars[i]) for i in range(nbranchvars)]
@@ -995,7 +1031,6 @@ cdef class Model:
     @staticmethod
     def from_ptr(capsule, take_ownership):
         """Create a Model from a given pointer.
-
         :param cpasule: The PyCapsule containing the SCIP pointer under the name "scip".
         :param take_ownership: Whether the newly created Model assumes ownership of the
         underlying Scip pointer (see `_freescip`).
@@ -1009,7 +1044,6 @@ cdef class Model:
     @cython.always_allow_keywords(True)
     def to_ptr(self, give_ownership):
         """Return the underlying Scip pointer to the current Model.
-
         :param give_ownership: Whether the current Model gives away ownership of the
         underlying Scip pointer (see `_freescip`).
         :return capsule: The underlying pointer to the current Model, wrapped in a
@@ -1026,9 +1060,7 @@ cdef class Model:
 
     def createProbBasic(self, problemName='model'):
         """Create new problem instance with given name
-
         :param problemName: name of model or problem (Default value = 'model')
-
         """
         n = str_conversion(problemName)
         PY_SCIP_CALL(SCIPcreateProbBasic(self._scip, n))
@@ -1076,6 +1108,10 @@ cdef class Model:
     def getNNodes(self):
         """Retrieve the total number of processed nodes."""
         return SCIPgetNNodes(self._scip)
+
+    def getNTotalNodes(self):
+        """Retrieve the total number of processed nodes."""
+        return SCIPgetNTotalNodes(self._scip)
 
     def getNFeasibleLeaves(self):
         """Retrieve number of leaf nodes processed with feasible relaxation solution."""
@@ -1175,9 +1211,7 @@ cdef class Model:
 
     def getCondition(self, exact=False):
         """Get the current LP's condition number
-
         :param exact: whether to get an estimate or the exact value (Default value = False)
-
         """
         cdef SCIP_LPI* lpi
         PY_SCIP_CALL(SCIPgetLPI(self._scip, &lpi))
@@ -1214,9 +1248,7 @@ cdef class Model:
     def setObjlimit(self, objlimit):
         """Set a limit on the objective function.
         Only solutions with objective value better than this limit are accepted.
-
         :param objlimit: limit on the objective function
-
         """
         PY_SCIP_CALL(SCIPsetObjlimit(self._scip, objlimit))
 
@@ -1226,11 +1258,9 @@ cdef class Model:
 
     def setObjective(self, coeffs, sense = 'minimize', clear = 'true'):
         """Establish the objective function as a linear expression.
-
         :param coeffs: the coefficients
         :param sense: the objective sense (Default value = 'minimize')
         :param clear: set all other variables objective coefficient to zero (Default value = 'true')
-
         """
         cdef SCIP_VAR** _vars
         cdef int _nvars
@@ -1279,10 +1309,8 @@ cdef class Model:
 
     def addObjoffset(self, offset, solutions = False):
         """Add constant offset to objective
-
         :param offset: offset to add
         :param solutions: add offset also to existing solutions (Default value = False)
-
         """
         if solutions:
             PY_SCIP_CALL(SCIPaddObjoffset(self._scip, offset))
@@ -1291,9 +1319,7 @@ cdef class Model:
 
     def getObjoffset(self, original = True):
         """Retrieve constant objective offset
-
         :param original: offset of original or transformed problem (Default value = True)
-
         """
         if original:
             return SCIPgetOrigObjoffset(self._scip)
@@ -1303,9 +1329,7 @@ cdef class Model:
     # Setting parameters
     def setPresolve(self, setting):
         """Set presolving parameter settings.
-
         :param setting: the parameter settings (SCIP_PARAMSETTING)
-
         """
         PY_SCIP_CALL(SCIPsetPresolving(self._scip, setting, True))
 
@@ -1316,25 +1340,19 @@ cdef class Model:
 
     def setSeparating(self, setting):
         """Set separating parameter settings.
-
         :param setting: the parameter settings (SCIP_PARAMSETTING)
-
         """
         PY_SCIP_CALL(SCIPsetSeparating(self._scip, setting, True))
 
     def setHeuristics(self, setting):
         """Set heuristics parameter settings.
-
         :param setting: the parameter setting (SCIP_PARAMSETTING)
-
         """
         PY_SCIP_CALL(SCIPsetHeuristics(self._scip, setting, True))
 
     def disablePropagation(self, onlyroot=False):
         """Disables propagation in SCIP to avoid modifying the original problem during transformation.
-
         :param onlyroot: use propagation when root processing is finished (Default value = False)
-
         """
         self.setIntParam("propagating/maxroundsroot", 0)
         if not onlyroot:
@@ -1342,10 +1360,8 @@ cdef class Model:
 
     def writeProblem(self, filename='model.cip', trans=False):
         """Write current model/problem to a file.
-
         :param filename: the name of the file to be used (Default value = 'model.cip')
         :param trans: indicates whether the transformed problem is written to file (Default value = False)
-
         """
         fn = str_conversion(filename)
         fn, ext = splitext(fn)
@@ -1363,14 +1379,12 @@ cdef class Model:
 
     def addVar(self, name='', vtype='C', lb=0.0, ub=None, obj=0.0, pricedVar = False):
         """Create a new variable. Default variable is non-negative and continuous.
-
         :param name: name of the variable, generic if empty (Default value = '')
         :param vtype: type of the variable (Default value = 'C')
         :param lb: lower bound of the variable, use None for -infinity (Default value = 0.0)
         :param ub: upper bound of the variable, use None for +infinity (Default value = None)
         :param obj: objective value of variable (Default value = 0.0)
         :param pricedVar: is the variable a pricing candidate? (Default value = False)
-
         """
 
         # replace empty name with generic one
@@ -1415,9 +1429,7 @@ cdef class Model:
 
     def getTransformedVar(self, Variable var):
         """Retrieve the transformed variable.
-
         :param Variable var: original variable to get the transformed of
-
         """
         cdef SCIP_VAR* _tvar
         PY_SCIP_CALL(SCIPtransformVar(self._scip, var.scip_var, &_tvar))
@@ -1425,21 +1437,17 @@ cdef class Model:
 
     def addVarLocks(self, Variable var, nlocksdown, nlocksup):
         """adds given values to lock numbers of variable for rounding
-
         :param Variable var: variable to adjust the locks for
         :param nlocksdown: new number of down locks
         :param nlocksup: new number of up locks
-
         """
         PY_SCIP_CALL(SCIPaddVarLocks(self._scip, var.scip_var, nlocksdown, nlocksup))
 
     def fixVar(self, Variable var, val):
         """Fixes the variable var to the value val if possible.
-
         :param Variable var: variable to fix
         :param val: float, the fix value
         :return: tuple (infeasible, fixed) of booleans
-
         """
         cdef SCIP_Bool infeasible
         cdef SCIP_Bool fixed
@@ -1448,10 +1456,8 @@ cdef class Model:
 
     def delVar(self, Variable var):
         """Delete a variable.
-
         :param var: the variable which shall be deleted
         :return: bool, was deleting succesful
-
         """
         cdef SCIP_Bool deleted
         PY_SCIP_CALL(SCIPdelVar(self._scip, var.scip_var, &deleted))
@@ -1459,14 +1465,12 @@ cdef class Model:
 
     def tightenVarLb(self, Variable var, lb, force=False):
         """Tighten the lower bound in preprocessing or current node, if the bound is tighter.
-
         :param var: SCIP variable
         :param lb: possible new lower bound
         :param force: force tightening even if below bound strengthening tolerance
         :return: tuple of bools, (infeasible, tightened)
                     infeasible: whether new domain is empty
                     tightened: whether the bound was tightened
-
         """
         cdef SCIP_Bool infeasible
         cdef SCIP_Bool tightened
@@ -1476,14 +1480,12 @@ cdef class Model:
 
     def tightenVarUb(self, Variable var, ub, force=False):
         """Tighten the upper bound in preprocessing or current node, if the bound is tighter.
-
         :param var: SCIP variable
         :param ub: possible new upper bound
         :param force: force tightening even if below bound strengthening tolerance
         :return: tuple of bools, (infeasible, tightened)
                     infeasible: whether new domain is empty
                     tightened: whether the bound was tightened
-
         """
         cdef SCIP_Bool infeasible
         cdef SCIP_Bool tightened
@@ -1493,14 +1495,12 @@ cdef class Model:
 
     def tightenVarUbGlobal(self, Variable var, ub, force=False):
         """Tighten the global upper bound, if the bound is tighter.
-
         :param var: SCIP variable
         :param ub: possible new upper bound
         :param force: force tightening even if below bound strengthening tolerance
         :return: tuple of bools, (infeasible, tightened)
                     infeasible: whether new domain is empty
                     tightened: whether the bound was tightened
-
         """
         cdef SCIP_Bool infeasible
         cdef SCIP_Bool tightened
@@ -1509,14 +1509,12 @@ cdef class Model:
 
     def tightenVarLbGlobal(self, Variable var, lb, force=False):
         """Tighten the global upper bound, if the bound is tighter.
-
         :param var: SCIP variable
         :param lb: possible new upper bound
         :param force: force tightening even if below bound strengthening tolerance
         :return: tuple of bools, (infeasible, tightened)
                     infeasible: whether new domain is empty
                     tightened: whether the bound was tightened
-
         """
         cdef SCIP_Bool infeasible
         cdef SCIP_Bool tightened
@@ -1525,10 +1523,8 @@ cdef class Model:
 
     def chgVarLb(self, Variable var, lb):
         """Changes the lower bound of the specified variable.
-
         :param Variable var: variable to change bound of
         :param lb: new lower bound (set to None for -infinity)
-
         """
         if lb is None:
            lb = -SCIPinfinity(self._scip)
@@ -1536,10 +1532,8 @@ cdef class Model:
 
     def chgVarUb(self, Variable var, ub):
         """Changes the upper bound of the specified variable.
-
         :param Variable var: variable to change bound of
         :param ub: new upper bound (set to None for +infinity)
-
         """
         if ub is None:
            ub = SCIPinfinity(self._scip)
@@ -1548,10 +1542,8 @@ cdef class Model:
 
     def chgVarLbGlobal(self, Variable var, lb):
         """Changes the global lower bound of the specified variable.
-
         :param Variable var: variable to change bound of
         :param lb: new lower bound (set to None for -infinity)
-
         """
         if lb is None:
            lb = -SCIPinfinity(self._scip)
@@ -1559,10 +1551,8 @@ cdef class Model:
 
     def chgVarUbGlobal(self, Variable var, ub):
         """Changes the global upper bound of the specified variable.
-
         :param Variable var: variable to change bound of
         :param ub: new upper bound (set to None for +infinity)
-
         """
         if ub is None:
            ub = SCIPinfinity(self._scip)
@@ -1570,7 +1560,6 @@ cdef class Model:
 
     def chgVarLbNode(self, Node node, Variable var, lb):
         """Changes the lower bound of the specified variable at the given node.
-
         :param Variable var: variable to change bound of
         :param lb: new lower bound (set to None for -infinity)
         """
@@ -1581,10 +1570,8 @@ cdef class Model:
 
     def chgVarUbNode(self, Node node, Variable var, ub):
         """Changes the upper bound of the specified variable at the given node.
-
         :param Variable var: variable to change bound of
         :param ub: new upper bound (set to None for +infinity)
-
         """
         if ub is None:
            ub = SCIPinfinity(self._scip)
@@ -1592,10 +1579,8 @@ cdef class Model:
 
     def chgVarType(self, Variable var, vtype):
         """Changes the type of a variable
-
         :param Variable var: variable to change type of
         :param vtype: new variable type
-
         """
         cdef SCIP_Bool infeasible
         if vtype in ['C', 'CONTINUOUS']:
@@ -1611,9 +1596,7 @@ cdef class Model:
 
     def getVars(self, transformed=False):
         """Retrieve all variables.
-
         :param transformed: get transformed variables instead of original (Default value = False)
-
         """
         cdef SCIP_VAR** _vars
         cdef SCIP_VAR* _var
@@ -1653,10 +1636,8 @@ cdef class Model:
     def updateNodeLowerbound(self, Node node, lb):
         """if given value is larger than the node's lower bound (in transformed problem),
         sets the node's lower bound to the new value
-
         :param node: Node, the node to update
         :param newbound: float, new bound (if greater) for the node
-
         """
         PY_SCIP_CALL(SCIPupdateNodeLowerbound(self._scip, node.scip_node, lb))
 
@@ -1683,7 +1664,6 @@ cdef class Model:
 
     def getOpenNodes(self):
         """access to all data of open nodes (leaves, children, and siblings)
-
         :return: three lists containing open leaves, children, siblings
         """
         cdef SCIP_NODE** _leaves
@@ -1710,9 +1690,7 @@ cdef class Model:
     def constructLP(self):
         """makes sure that the LP of the current node is loaded and
          may be accessed through the LP information methods
-
         :return:  bool cutoff, i.e. can the node be cut off?
-
         """
         cdef SCIP_Bool cutoff
         PY_SCIP_CALL(SCIPconstructLP(self._scip, &cutoff))
@@ -1787,7 +1765,6 @@ cdef class Model:
     # LP Row Methods
     def createEmptyRowSepa(self, Sepa sepa, name="row", lhs = 0.0, rhs = None, local = True, modifiable = False, removable = True):
         """creates and captures an LP row without any coefficients from a separator
-
         :param sepa: separator that creates the row
         :param name: name of row (Default value = "row")
         :param lhs: left hand side of row (Default value = 0)
@@ -1806,7 +1783,6 @@ cdef class Model:
 
     def createEmptyRowUnspec(self, name="row", lhs = 0.0, rhs = None, local = True, modifiable = False, removable = True):
         """creates and captures an LP row without any coefficients from an unspecified source
-
         :param name: name of row (Default value = "row")
         :param lhs: left hand side of row (Default value = 0)
         :param rhs: right hand side of row (Default value = None)
@@ -1909,7 +1885,6 @@ cdef class Model:
                 modifiable=False, dynamic=False, removable=False,
                 stickingatnode=False):
         """Add a linear or quadratic constraint.
-
         :param cons: list of coefficients
         :param name: the name of the constraint, generic name if empty (Default value = '')
         :param initial: should the LP relaxation of constraint be in the initial LP? (Default value = True)
@@ -1922,7 +1897,6 @@ cdef class Model:
         :param dynamic: is the constraint subject to aging? (Default value = False)
         :param removable: should the relaxation be removed from the LP due to aging or cleanup? (Default value = False)
         :param stickingatnode: should the constraint always be kept at the node where it was added, even if it may be  moved to a more global node? (Default value = False)
-
         """
         assert isinstance(cons, ExprCons), "given constraint is not ExprCons but %s" % cons.__class__.__name__
 
@@ -2169,21 +2143,17 @@ cdef class Model:
 
     def addConsCoeff(self, Constraint cons, Variable var, coeff):
         """Add coefficient to the linear constraint (if non-zero).
-
         :param Constraint cons: constraint to be changed
         :param Variable var: variable to be added
         :param coeff: coefficient of new variable
-
         """
         PY_SCIP_CALL(SCIPaddCoefLinear(self._scip, cons.scip_cons, var.scip_var, coeff))
 
     def addConsNode(self, Node node, Constraint cons, Node validnode=None):
         """Add a constraint to the given node
-
         :param Node node: node to add the constraint to
         :param Constraint cons: constraint to add
         :param Node validnode: more global node where cons is also valid
-
         """
         if isinstance(validnode, Node):
             PY_SCIP_CALL(SCIPaddConsNode(self._scip, node.scip_node, cons.scip_cons, validnode.scip_node))
@@ -2192,10 +2162,8 @@ cdef class Model:
 
     def addConsLocal(self, Constraint cons, Node validnode=None):
         """Add a constraint to the current node
-
         :param Constraint cons: constraint to add
         :param Node validnode: more global node where cons is also valid
-
         """
         if isinstance(validnode, Node):
             PY_SCIP_CALL(SCIPaddConsLocal(self._scip, cons.scip_cons, validnode.scip_node))
@@ -2207,7 +2175,6 @@ cdef class Model:
                 propagate=True, local=False, dynamic=False,
                 removable=False, stickingatnode=False):
         """Add an SOS1 constraint.
-
         :param vars: list of variables to be included
         :param weights: list of weights (Default value = None)
         :param name: name of the constraint (Default value = "SOS1cons")
@@ -2220,7 +2187,6 @@ cdef class Model:
         :param dynamic: is the constraint subject to aging? (Default value = False)
         :param removable: should the relaxation be removed from the LP due to aging or cleanup? (Default value = False)
         :param stickingatnode: should the constraint always be kept at the node where it was added, even if it may be moved to a more global node? (Default value = False)
-
         """
         cdef SCIP_CONS* scip_cons
         cdef int _nvars
@@ -2246,7 +2212,6 @@ cdef class Model:
                 propagate=True, local=False, dynamic=False,
                 removable=False, stickingatnode=False):
         """Add an SOS2 constraint.
-
         :param vars: list of variables to be included
         :param weights: list of weights (Default value = None)
         :param name: name of the constraint (Default value = "SOS2cons")
@@ -2259,7 +2224,6 @@ cdef class Model:
         :param dynamic: is the constraint subject to aging? (Default value = False)
         :param removable: should the relaxation be removed from the LP due to aging or cleanup? (Default value = False)
         :param stickingatnode: should the constraint always be kept at the node where it was added, even if it may be moved to a more global node? (Default value = False)
-
         """
         cdef SCIP_CONS* scip_cons
         cdef int _nvars
@@ -2402,7 +2366,6 @@ cdef class Model:
                 propagate=True, local=False, dynamic=False,
                 removable=False, stickingatnode=False):
         """Add a cardinality constraint that allows at most 'cardval' many nonzero variables.
-
         :param consvars: list of variables to be included
         :param cardval: nonnegative integer
         :param indvars: indicator variables indicating which variables may be treated as nonzero in cardinality constraint, or None if new indicator variables should be introduced automatically (Default value = None)
@@ -2417,7 +2380,6 @@ cdef class Model:
         :param dynamic: is the constraint subject to aging? (Default value = False)
         :param removable: should the relaxation be removed from the LP due to aging or cleanup? (Default value = False)
         :param stickingatnode: should the constraint always be kept at the node where it was added, even if it may be moved to a more global node? (Default value = False)
-
         """
         cdef SCIP_CONS* scip_cons
         cdef SCIP_VAR* indvar
@@ -2453,10 +2415,8 @@ cdef class Model:
                 propagate=True, local=False, dynamic=False,
                 removable=False, stickingatnode=False):
         """Add an indicator constraint for the linear inequality 'cons'.
-
         The 'binvar' argument models the redundancy of the linear constraint. A solution for which
         'binvar' is 1 must satisfy the constraint.
-
         :param cons: a linear inequality of the form "<="
         :param binvar: binary indicator variable, or None if it should be created (Default value = None)
         :param name: name of the constraint (Default value = "IndicatorCons")
@@ -2469,7 +2429,6 @@ cdef class Model:
         :param dynamic: is the constraint subject to aging? (Default value = False)
         :param removable: should the relaxation be removed from the LP due to aging or cleanup? (Default value = False)
         :param stickingatnode: should the constraint always be kept at the node where it was added, even if it may be moved to a more global node? (Default value = False)
-
         """
         assert isinstance(cons, ExprCons), "given constraint is not ExprCons but %s" % cons.__class__.__name__
         cdef SCIP_CONS* scip_cons
@@ -2509,54 +2468,43 @@ cdef class Model:
 
     def addPyCons(self, Constraint cons):
         """Adds a customly created cons.
-
         :param Constraint cons: constraint to add
-
         """
         PY_SCIP_CALL(SCIPaddCons(self._scip, cons.scip_cons))
         Py_INCREF(cons)
 
     def addVarSOS1(self, Constraint cons, Variable var, weight):
         """Add variable to SOS1 constraint.
-
         :param Constraint cons: SOS1 constraint
         :param Variable var: new variable
         :param weight: weight of new variable
-
         """
         PY_SCIP_CALL(SCIPaddVarSOS1(self._scip, cons.scip_cons, var.scip_var, weight))
 
     def appendVarSOS1(self, Constraint cons, Variable var):
         """Append variable to SOS1 constraint.
-
         :param Constraint cons: SOS1 constraint
         :param Variable var: variable to append
-
         """
         PY_SCIP_CALL(SCIPappendVarSOS1(self._scip, cons.scip_cons, var.scip_var))
 
     def addVarSOS2(self, Constraint cons, Variable var, weight):
         """Add variable to SOS2 constraint.
-
         :param Constraint cons: SOS2 constraint
         :param Variable var: new variable
         :param weight: weight of new variable
-
         """
         PY_SCIP_CALL(SCIPaddVarSOS2(self._scip, cons.scip_cons, var.scip_var, weight))
 
     def appendVarSOS2(self, Constraint cons, Variable var):
         """Append variable to SOS2 constraint.
-
         :param Constraint cons: SOS2 constraint
         :param Variable var: variable to append
-
         """
         PY_SCIP_CALL(SCIPappendVarSOS2(self._scip, cons.scip_cons, var.scip_var))
 
     def setInitial(self, Constraint cons, newInit):
         """Set "initial" flag of a constraint.
-
         Keyword arguments:
         cons -- constraint
         newInit -- new initial value
@@ -2565,7 +2513,6 @@ cdef class Model:
 
     def setRemovable(self, Constraint cons, newRem):
         """Set "removable" flag of a constraint.
-
         Keyword arguments:
         cons -- constraint
         newRem -- new removable value
@@ -2574,7 +2521,6 @@ cdef class Model:
 
     def setEnforced(self, Constraint cons, newEnf):
         """Set "enforced" flag of a constraint.
-
         Keyword arguments:
         cons -- constraint
         newEnf -- new enforced value
@@ -2583,7 +2529,6 @@ cdef class Model:
 
     def setCheck(self, Constraint cons, newCheck):
         """Set "check" flag of a constraint.
-
         Keyword arguments:
         cons -- constraint
         newCheck -- new check value
@@ -2592,10 +2537,8 @@ cdef class Model:
 
     def chgRhs(self, Constraint cons, rhs):
         """Change right hand side value of a constraint.
-
         :param Constraint cons: linear or quadratic constraint
         :param rhs: new ride hand side (set to None for +infinity)
-
         """
 
         if rhs is None:
@@ -2611,10 +2554,8 @@ cdef class Model:
 
     def chgLhs(self, Constraint cons, lhs):
         """Change left hand side value of a constraint.
-
         :param Constraint cons: linear or quadratic constraint
         :param lhs: new left hand side (set to None for -infinity)
-
         """
 
         if lhs is None:
@@ -2630,9 +2571,7 @@ cdef class Model:
 
     def getRhs(self, Constraint cons):
         """Retrieve right hand side value of a constraint.
-
         :param Constraint cons: linear or quadratic constraint
-
         """
         constype = bytes(SCIPconshdlrGetName(SCIPconsGetHdlr(cons.scip_cons))).decode('UTF-8')
         if constype == 'linear':
@@ -2644,9 +2583,7 @@ cdef class Model:
 
     def getLhs(self, Constraint cons):
         """Retrieve left hand side value of a constraint.
-
         :param Constraint cons: linear or quadratic constraint
-
         """
         constype = bytes(SCIPconshdlrGetName(SCIPconsGetHdlr(cons.scip_cons))).decode('UTF-8')
         if constype == 'linear':
@@ -2659,10 +2596,8 @@ cdef class Model:
     def getActivity(self, Constraint cons, Solution sol = None):
         """Retrieve activity of given constraint.
         Can only be called after solving is completed.
-
         :param Constraint cons: linear or quadratic constraint
         :param Solution sol: solution to compute activity of, None to use current node's solution (Default value = None)
-
         """
         cdef SCIP_Real activity
         cdef SCIP_SOL* scip_sol
@@ -2689,12 +2624,9 @@ cdef class Model:
     def getSlack(self, Constraint cons, Solution sol = None, side = None):
         """Retrieve slack of given constraint.
         Can only be called after solving is completed.
-
-
         :param Constraint cons: linear or quadratic constraint
         :param Solution sol: solution to compute slack of, None to use current node's solution (Default value = None)
         :param side: whether to use 'lhs' or 'rhs' for ranged constraints, None to return minimum (Default value = None)
-
         """
         cdef SCIP_Real activity
         cdef SCIP_SOL* scip_sol
@@ -2732,9 +2664,7 @@ cdef class Model:
 
     def getTransformedCons(self, Constraint cons):
         """Retrieve transformed constraint.
-
         :param Constraint cons: constraint
-
         """
         cdef SCIP_CONS* transcons
         PY_SCIP_CALL(SCIPgetTransformedCons(self._scip, cons.scip_cons, &transcons))
@@ -2795,9 +2725,7 @@ cdef class Model:
 
     def getTermsQuadratic(self, Constraint cons):
         """Retrieve bilinear, quadratic, and linear terms of a quadratic constraint.
-
         :param Constraint cons: constraint
-
         """
         cdef SCIP_QUADVARTERM* _quadterms
         cdef SCIP_BILINTERM* _bilinterms
@@ -2861,25 +2789,19 @@ cdef class Model:
 
     def delCons(self, Constraint cons):
         """Delete constraint from the model
-
         :param Constraint cons: constraint to be deleted
-
         """
         PY_SCIP_CALL(SCIPdelCons(self._scip, cons.scip_cons))
 
     def delConsLocal(self, Constraint cons):
         """Delete constraint from the current node and it's children
-
         :param Constraint cons: constraint to be deleted
-
         """
         PY_SCIP_CALL(SCIPdelConsLocal(self._scip, cons.scip_cons))
 
     def getValsLinear(self, Constraint cons):
         """Retrieve the coefficients of a linear constraint
-
         :param Constraint cons: linear constraint to get the coefficients of
-
         """
         cdef SCIP_Real* _vals
         cdef SCIP_VAR** _vars
@@ -2898,9 +2820,7 @@ cdef class Model:
 
     def getDualsolLinear(self, Constraint cons):
         """Retrieve the dual solution to a linear constraint.
-
         :param Constraint cons: linear constraint
-
         """
         constype = bytes(SCIPconshdlrGetName(SCIPconsGetHdlr(cons.scip_cons))).decode('UTF-8')
         if not constype == 'linear':
@@ -2913,18 +2833,14 @@ cdef class Model:
 
     def getDualMultiplier(self, Constraint cons):
         """DEPRECATED: Retrieve the dual solution to a linear constraint.
-
         :param Constraint cons: linear constraint
-
         """
         raise Warning("model.getDualMultiplier(cons) is deprecated: please use model.getDualsolLinear(cons)")
         return self.getDualsolLinear(cons)
 
     def getDualfarkasLinear(self, Constraint cons):
         """Retrieve the dual farkas value to a linear constraint.
-
         :param Constraint cons: linear constraint
-
         """
         # TODO this should ideally be handled on the SCIP side
         if cons.isOriginal():
@@ -2935,9 +2851,7 @@ cdef class Model:
 
     def getVarRedcost(self, Variable var):
         """Retrieve the reduced cost of a variable.
-
         :param Variable var: variable to get the reduced cost of
-
         """
         redcost = None
         try:
@@ -2960,7 +2874,6 @@ cdef class Model:
     # Benders' decomposition methods
     def initBendersDefault(self, subproblems):
         """initialises the default Benders' decomposition with a dictionary of subproblems
-
         Keyword arguments:
         subproblems -- a single Model instance or dictionary of Model instances
         """
@@ -2998,7 +2911,6 @@ cdef class Model:
         """Solves the subproblems with the best solution to the master problem.
         Afterwards, the best solution from each subproblem can be queried to get
         the solution to the original problem.
-
         If the user wants to resolve the subproblems, they must free them by
         calling freeBendersSubproblems()
         """
@@ -3058,7 +2970,6 @@ cdef class Model:
 
     def activateBenders(self, Benders benders, int nsubproblems):
         """Activates the Benders' decomposition plugin with the input name
-
         Keyword arguments:
         benders -- the Benders' decomposition to which the subproblem belongs to
         nsubproblems -- the number of subproblems in the Benders' decomposition
@@ -3068,7 +2979,6 @@ cdef class Model:
     def addBendersSubproblem(self, Benders benders, subproblem):
         """adds a subproblem to the Benders' decomposition given by the input
         name.
-
         Keyword arguments:
         benders -- the Benders' decomposition to which the subproblem belongs to
         subproblem --  the subproblem to add to the decomposition
@@ -3078,7 +2988,6 @@ cdef class Model:
 
     def setBendersSubproblemIsConvex(self, Benders benders, probnumber, isconvex = True):
         """sets a flag indicating whether the subproblem is convex
-
         Keyword arguments:
         benders -- the Benders' decomposition which contains the subproblem
         probnumber -- the problem number of the subproblem that the convexity will be set for
@@ -3088,7 +2997,6 @@ cdef class Model:
 
     def setupBendersSubproblem(self, probnumber, Benders benders = None, Solution solution = None, checktype = PY_SCIP_BENDERSENFOTYPE.LP):
         """ sets up the Benders' subproblem given the master problem solution
-
         Keyword arguments:
         probnumber -- the index of the problem that is to be set up
         benders -- the Benders' decomposition to which the subproblem belongs to
@@ -3116,7 +3024,6 @@ cdef class Model:
     def solveBendersSubproblem(self, probnumber, solvecip, Benders benders = None, Solution solution = None):
         """ solves the Benders' decomposition subproblem. The convex relaxation will be solved unless
         the parameter solvecip is set to True.
-
         Keyword arguments:
         probnumber -- the index of the problem that is to be set up
         solvecip -- should the CIP of the subproblem be solved, if False, then only the convex relaxation is solved
@@ -3147,7 +3054,6 @@ cdef class Model:
     def getBendersSubproblem(self, probnumber, Benders benders = None):
         """Returns a Model object that wraps around the SCIP instance of the subproblem.
         NOTE: This Model object is just a place holder and SCIP instance will not be freed when the object is destroyed.
-
         Keyword arguments:
         probnumber -- the problem number for subproblem that is required
         benders -- the Benders' decomposition object for the that the subproblem belongs to (Default = None)
@@ -3167,7 +3073,6 @@ cdef class Model:
     def getBendersVar(self, Variable var, Benders benders = None, probnumber = -1):
         """Returns the variable for the subproblem or master problem
         depending on the input probnumber
-
         Keyword arguments:
         var -- the source variable for which the target variable is requested
         benders -- the Benders' decomposition to which the subproblem variables belong to
@@ -3195,7 +3100,6 @@ cdef class Model:
 
     def getBendersAuxiliaryVar(self, probnumber, Benders benders = None):
         """Returns the auxiliary variable that is associated with the input problem number
-
         Keyword arguments:
         probnumber -- the problem number for which the target variable belongs, -1 for master problem
         benders -- the Benders' decomposition to which the subproblem variables belong to
@@ -3215,7 +3119,6 @@ cdef class Model:
 
     def checkBendersSubproblemOptimality(self, Solution solution, probnumber, Benders benders = None):
         """Returns whether the subproblem is optimal w.r.t the master problem auxiliary variables.
-
         Keyword arguments:
         solution -- the master problem solution that is being checked for optimamlity
         probnumber -- the problem number for which optimality is being checked
@@ -3242,7 +3145,6 @@ cdef class Model:
 
     def includeBendersDefaultCuts(self, Benders benders):
         """includes the default Benders' decomposition cuts to the custom Benders' decomposition plugin
-
         Keyword arguments:
         benders -- the Benders' decomposition that the default cuts will be applied to
         """
@@ -3251,7 +3153,6 @@ cdef class Model:
 
     def includeEventhdlr(self, Eventhdlr eventhdlr, name, desc):
         """Include an event handler.
-
         Keyword arguments:
         eventhdlr -- event handler
         name -- name of event handler
@@ -3275,13 +3176,11 @@ cdef class Model:
 
     def includePricer(self, Pricer pricer, name, desc, priority=1, delay=True):
         """Include a pricer.
-
         :param Pricer pricer: pricer
         :param name: name of pricer
         :param desc: description of pricer
         :param priority: priority of pricer (Default value = 1)
         :param delay: should the pricer be delayed until no other pricers or already existing problem variables with negative reduced costs are found? (Default value = True)
-
         """
         n = str_conversion(name)
         d = str_conversion(desc)
@@ -3302,7 +3201,6 @@ cdef class Model:
                         proptiming=PY_SCIP_PROPTIMING.BEFORELP,
                         presoltiming=PY_SCIP_PRESOLTIMING.MEDIUM):
         """Include a constraint handler
-
         :param Conshdlr conshdlr: constraint handler
         :param name: name of constraint handler
         :param desc: description of constraint handler
@@ -3318,7 +3216,6 @@ cdef class Model:
         :param needscons: should the constraint handler be skipped, if no constraints are available? (Default value = True)
         :param proptiming: positions in the node solving loop where propagation method of constraint handlers should be executed (Default value = SCIP_PROPTIMING.BEFORELP)
         :param presoltiming: timing mask of the constraint handler's presolving method (Default value = SCIP_PRESOLTIMING.MEDIUM)
-
         """
         n = str_conversion(name)
         d = str_conversion(desc)
@@ -3337,7 +3234,6 @@ cdef class Model:
     def createCons(self, Conshdlr conshdlr, name, initial=True, separate=True, enforce=True, check=True, propagate=True,
                    local=False, modifiable=False, dynamic=False, removable=False, stickingatnode=False):
         """Create a constraint of a custom constraint handler
-
         :param Conshdlr conshdlr: constraint handler
         :param name: name of constraint
         :param initial:  (Default value = True)
@@ -3350,7 +3246,6 @@ cdef class Model:
         :param dynamic:  (Default value = False)
         :param removable:  (Default value = False)
         :param stickingatnode:  (Default value = False)
-
         """
 
         n = str_conversion(name)
@@ -3363,14 +3258,12 @@ cdef class Model:
 
     def includePresol(self, Presol presol, name, desc, priority, maxrounds, timing=SCIP_PRESOLTIMING_FAST):
         """Include a presolver
-
         :param Presol presol: presolver
         :param name: name of presolver
         :param desc: description of presolver
         :param priority: priority of the presolver (>= 0: before, < 0: after constraint handlers)
         :param maxrounds: maximal number of presolving rounds the presolver participates in (-1: no limit)
         :param timing: timing mask of presolver (Default value = SCIP_PRESOLTIMING_FAST)
-
         """
         n = str_conversion(name)
         d = str_conversion(desc)
@@ -3381,7 +3274,6 @@ cdef class Model:
 
     def includeSepa(self, Sepa sepa, name, desc, priority=0, freq=10, maxbounddist=1.0, usessubscip=False, delay=False):
         """Include a separator
-
         :param Sepa sepa: separator
         :param name: name of separator
         :param desc: description of separator
@@ -3390,7 +3282,6 @@ cdef class Model:
         :param maxbounddist: maximal relative distance from current node's dual bound to primal bound compared to best node's dual bound for applying separation
         :param usessubscip: does the separator use a secondary SCIP instance? (Default value = False)
         :param delay: should separator be delayed, if other separators found cuts? (Default value = False)
-
         """
         n = str_conversion(name)
         d = str_conversion(desc)
@@ -3403,7 +3294,6 @@ cdef class Model:
     def includeProp(self, Prop prop, name, desc, presolpriority, presolmaxrounds,
                     proptiming, presoltiming=SCIP_PRESOLTIMING_FAST, priority=1, freq=1, delay=True):
         """Include a propagator.
-
         :param Prop prop: propagator
         :param name: name of propagator
         :param desc: description of propagator
@@ -3414,7 +3304,6 @@ cdef class Model:
         :param priority: priority of the propagator (Default value = 1)
         :param freq: frequency for calling propagator (Default value = 1)
         :param delay: should propagator be delayed if other propagators have found reductions? (Default value = True)
-
         """
         n = str_conversion(name)
         d = str_conversion(desc)
@@ -3431,7 +3320,6 @@ cdef class Model:
     def includeHeur(self, Heur heur, name, desc, dispchar, priority=10000, freq=1, freqofs=0,
                     maxdepth=-1, timingmask=SCIP_HEURTIMING_BEFORENODE, usessubscip=False):
         """Include a primal heuristic.
-
         :param Heur heur: heuristic
         :param name: name of heuristic
         :param desc: description of heuristic
@@ -3442,7 +3330,6 @@ cdef class Model:
         :param maxdepth: maximal depth level to call heuristic at (Default value = -1)
         :param timingmask: positions in the node solving loop where heuristic should be executed (Default value = SCIP_HEURTIMING_BEFORENODE)
         :param usessubscip: does the heuristic use a secondary SCIP instance? (Default value = False)
-
         """
         nam = str_conversion(name)
         des = str_conversion(desc)
@@ -3459,13 +3346,11 @@ cdef class Model:
 
     def includeRelax(self, Relax relax, name, desc, priority=10000, freq=1):
         """Include a relaxation handler.
-
         :param Relax relax: relaxation handler
         :param name: name of relaxation handler
         :param desc: description of relaxation handler
         :param priority: priority of the relaxation handler (negative: after LP, non-negative: before LP, Default value = 10000)
         :param freq: frequency for calling relaxation handler
-
         """
         nam = str_conversion(name)
         des = str_conversion(desc)
@@ -3478,14 +3363,12 @@ cdef class Model:
 
     def includeBranchrule(self, Branchrule branchrule, name, desc, priority, maxdepth, maxbounddist):
         """Include a branching rule.
-
         :param Branchrule branchrule: branching rule
         :param name: name of branching rule
         :param desc: description of branching rule
         :param priority: priority of branching rule
         :param maxdepth: maximal depth level up to which this branching rule should be used (or -1)
         :param maxbounddist: maximal relative distance from current node's dual bound to primal bound compared to best node's dual bound for applying branching rule (0.0: only on current best node, 1.0: on all nodes)
-
         """
         nam = str_conversion(name)
         des = str_conversion(desc)
@@ -3499,13 +3382,11 @@ cdef class Model:
 
     def includeNodesel(self, Nodesel nodesel, name, desc, stdpriority, memsavepriority):
         """Include a node selector.
-
         :param Nodesel nodesel: node selector
         :param name: name of node selector
         :param desc: description of node selector
         :param stdpriority: priority of the node selector in standard mode
         :param memsavepriority: priority of the node selector in memory saving mode
-
         """
         nam = str_conversion(name)
         des = str_conversion(desc)
@@ -3520,7 +3401,6 @@ cdef class Model:
     def includeBenders(self, Benders benders, name, desc, priority=1, cutlp=True, cutpseudo=True, cutrelax=True,
             shareaux=False):
         """Include a Benders' decomposition.
-
         Keyword arguments:
         benders -- the Benders decomposition
         name -- the name
@@ -3549,7 +3429,6 @@ cdef class Model:
 
     def includeBenderscut(self, Benders benders, Benderscut benderscut, name, desc, priority=1, islpcut=True):
         """ Include a Benders' decomposition cutting method
-
         Keyword arguments:
         benders -- the Benders' decomposition that this cutting method is attached to
         benderscut --- the Benders' decomposition cutting method
@@ -3584,16 +3463,13 @@ cdef class Model:
         for fractional implicit integer variables which should not be used for branching decisions. Fractional
         implicit integer variables are stored at the positions *nlpcands to *nlpcands + *nfracimplvars - 1
         branching rules should always select the branching candidate among the first npriolpcands of the candidate list
-
         :return tuple (lpcands, lpcandssol, lpcadsfrac, nlpcands, npriolpcands, nfracimplvars) where
-
             lpcands: list of variables of LP branching candidates
             lpcandssol: list of LP candidate solution values
             lpcandsfrac	list of LP candidate fractionalities
             nlpcands:    number of LP branching candidates
             npriolpcands: number of candidates with maximal priority
             nfracimplvars: number of fractional implicit integer variables
-
         """
         cdef int ncands
         cdef int nlpcands
@@ -3627,11 +3503,9 @@ cdef class Model:
 
     def branchVar(self, variable):
         """Branch on a non-continuous variable.
-
         :param variable: Variable to branch on
         :return: tuple(downchild, eqchild, upchild) of Nodes of the left, middle and right child. Middle child only exists
                     if branch variable is integer (it is None otherwise)
-
         """
         cdef SCIP_NODE* downchild
         cdef SCIP_NODE* eqchild
@@ -3643,12 +3517,10 @@ cdef class Model:
 
     def branchVarVal(self, variable, value):
         """Branches on variable using a value which separates the domain of the variable.
-
         :param variable: Variable to branch on
         :param value: float, value to branch on
         :return: tuple(downchild, eqchild, upchild) of Nodes of the left, middle and right child. Middle child only exists
                     if branch variable is integer (it is None otherwise)
-
         """
         cdef SCIP_NODE* downchild
         cdef SCIP_NODE* eqchild
@@ -3662,12 +3534,10 @@ cdef class Model:
         """calculates the node selection priority for moving the given variable's LP value
         to the given target value;
         this node selection priority can be given to the SCIPcreateChild() call
-
         :param variable: variable on which the branching is applied
         :param branchdir: type of branching that was performed
         :param targetvalue: new value of the variable in the child node
         :return: node selection priority for moving the given variable's LP value to the given target value
-
         """
         return SCIPcalcNodeselPriority(self._scip, variable.scip_var, branchdir, targetvalue)
 
@@ -3675,21 +3545,17 @@ cdef class Model:
         """Calculates an estimate for the objective of the best feasible solution
         contained in the subtree after applying the given branching;
         this estimate can be given to the SCIPcreateChild() call
-
         :param variable: Variable to compute the estimate for
         :param targetvalue: new value of the variable in the child node
         :return: objective estimate of the best solution in the subtree after applying the given branching
-
         """
         return SCIPcalcChildEstimate(self._scip, variable.scip_var, targetvalue)
 
     def createChild(self, nodeselprio, estimate):
         """Create a child node of the focus node.
-
         :param nodeselprio: float, node selection priority of new node
         :param estimate: float, estimate for(transformed) objective value of best feasible solution in subtree
         :return: Node, the child which was created
-
         """
         cdef SCIP_NODE* child
         PY_SCIP_CALL(SCIPcreateChild(self._scip, &child, nodeselprio, estimate))
@@ -3794,7 +3660,6 @@ cdef class Model:
 
     def chgVarLbProbing(self, Variable var, lb):
         """changes the variable lower bound during probing mode
-
         :param Variable var: variable to change bound of
         :param lb: new lower bound (set to None for -infinity)
         """
@@ -3804,7 +3669,6 @@ cdef class Model:
 
     def chgVarUbProbing(self, Variable var, ub):
         """changes the variable upper bound during probing mode
-
         :param Variable var: variable to change bound of
         :param ub: new upper bound (set to None for +infinity)
         """
@@ -3884,9 +3748,7 @@ cdef class Model:
 
     def createSol(self, Heur heur = None):
         """Create a new primal solution.
-
         :param Heur heur: heuristic that found the solution (Default value = None)
-
         """
         cdef SCIP_HEUR* _heur
         cdef SCIP_SOL* _sol
@@ -3906,7 +3768,6 @@ cdef class Model:
 
     def printSol(self, Solution solution=None, write_zeros=False):
       """Print the given primal solution.
-
       Keyword arguments:
       solution -- solution to print
       write_zeros -- include variables that are set to zero
@@ -3918,7 +3779,6 @@ cdef class Model:
 
     def writeBestSol(self, filename="origprob.sol", write_zeros=False):
         """Write the best feasible primal solution to a file.
-
         Keyword arguments:
         filename -- name of the output file
         write_zeros -- include variables that are set to zero
@@ -3931,7 +3791,6 @@ cdef class Model:
 
     def writeSol(self, Solution solution, filename="origprob.sol", write_zeros=False):
         """Write the given primal solution to a file.
-
         Keyword arguments:
         solution -- solution to write
         filename -- name of the output file
@@ -3947,7 +3806,6 @@ cdef class Model:
     #   (as does it's namesake in SCIP)
     def readSol(self, filename):
         """Reads a given solution file, problem has to be transformed in advance.
-
         Keyword arguments:
         filename -- name of the input file
         """
@@ -3956,10 +3814,8 @@ cdef class Model:
 
     def readSolFile(self, filename):
         """Reads a given solution file.
-
         Solution is created but not added to storage/the model.
         Use 'addSol' OR 'trySol' to add it.
-
         Keyword arguments:
         filename -- name of the input file
         """
@@ -3978,11 +3834,9 @@ cdef class Model:
 
     def setSolVal(self, Solution solution, Variable var, val):
         """Set a variable in a solution.
-
         :param Solution solution: solution to be modified
         :param Variable var: variable in the solution
         :param val: value of the specified variable
-
         """
         cdef SCIP_SOL* _sol
         _sol = <SCIP_SOL*>solution.sol
@@ -3990,7 +3844,6 @@ cdef class Model:
 
     def trySol(self, Solution solution, printreason=True, completely=False, checkbounds=True, checkintegrality=True, checklprows=True, free=True):
         """Check given primal solution for feasibility and try to add it to the storage.
-
         :param Solution solution: solution to store
         :param printreason: should all reasons of violations be printed? (Default value = True)
         :param completely: should all violation be checked? (Default value = False)
@@ -3998,7 +3851,6 @@ cdef class Model:
         :param checkintegrality: has integrality to be checked? (Default value = True)
         :param checklprows: have current LP rows (both local and global) to be checked? (Default value = True)
         :param free: should solution be freed? (Default value = True)
-
         """
         cdef SCIP_Bool stored
         if free:
@@ -4009,7 +3861,6 @@ cdef class Model:
 
     def checkSol(self, Solution solution, printreason=True, completely=False, checkbounds=True, checkintegrality=True, checklprows=True, original=False):
         """Check given primal solution for feasibility without adding it to the storage.
-
         :param Solution solution: solution to store
         :param printreason: should all reasons of violations be printed? (Default value = True)
         :param completely: should all violation be checked? (Default value = False)
@@ -4017,7 +3868,6 @@ cdef class Model:
         :param checkintegrality: has integrality to be checked? (Default value = True)
         :param checklprows: have current LP rows (both local and global) to be checked? (Default value = True)
         :param original: must the solution be checked against the original problem (Default value = False)
-
         """
         cdef SCIP_Bool feasible
         if original:
@@ -4028,10 +3878,8 @@ cdef class Model:
 
     def addSol(self, Solution solution, free=True):
         """Try to add a solution to the storage.
-
         :param Solution solution: solution to store
         :param free: should solution be freed afterwards? (Default value = True)
-
         """
         cdef SCIP_Bool stored
         if free:
@@ -4042,9 +3890,7 @@ cdef class Model:
 
     def freeSol(self, Solution solution):
         """Free given solution
-
         :param Solution solution: solution to be freed
-
         """
         PY_SCIP_CALL(SCIPfreeSol(self._scip, &solution.sol))
 
@@ -4061,6 +3907,15 @@ cdef class Model:
 
         return sols
 
+    def getSolNodenum(self, Solution sol):
+        _sol = <SCIP_SOL*> sol.sol
+        return SCIPsolGetNodenum(_sol)
+
+    def getSolDepth(self, Solution sol):
+        """gets node's depth, where this solution was found"""
+        _sol = <SCIP_SOL*> sol.sol
+        return SCIPsolGetDepth(_sol)
+
     def getBestSol(self):
         """Retrieve currently best known feasible primal solution."""
         self._bestSol = Solution.create(self._scip, SCIPgetBestSol(self._scip))
@@ -4068,10 +3923,8 @@ cdef class Model:
 
     def getSolObjVal(self, Solution sol, original=True):
         """Retrieve the objective value of the solution.
-
         :param Solution sol: solution
         :param original: objective value in original space (Default value = True)
-
         """
         if sol == None:
             sol = Solution.create(self._scip, NULL)
@@ -4084,9 +3937,7 @@ cdef class Model:
     def getObjVal(self, original=True):
         """Retrieve the objective value of value of best solution.
         Can only be called after solving is completed.
-
         :param original: objective value in original space (Default value = True)
-
         """
         if not self.getStage() >= SCIP_STAGE_SOLVING:
             raise Warning("method cannot be called before problem is solved")
@@ -4095,10 +3946,8 @@ cdef class Model:
     def getSolVal(self, Solution sol, Expr expr):
         """Retrieve value of given variable or expression in the given solution or in
         the LP/pseudo solution if sol == None
-
         :param Solution sol: solution
         :param Expr expr: polynomial expression to query the value of
-
         Note: a variable is also an expression
         """
         if sol == None:
@@ -4112,9 +3961,7 @@ cdef class Model:
     def getVal(self, Expr expr):
         """Retrieve the value of the given variable or expression in the best known solution.
         Can only be called after solving is completed.
-
         :param Expr expr: polynomial expression to query the value of
-
         Note: a variable is also an expression
         """
         if not self.getStage() >= SCIP_STAGE_SOLVING:
@@ -4135,9 +3982,7 @@ cdef class Model:
 
     def writeName(self, Variable var):
         """Write the name of the variable to the std out.
-
         :param Variable var: variable
-
         """
         PY_SCIP_CALL(SCIPwriteVarName(self._scip, NULL, var.scip_var, False))
 
@@ -4257,7 +4102,6 @@ cdef class Model:
 
     def writeStatistics(self, filename="origprob.stats"):
       """Write statistics to a file.
-
       Keyword arguments:
       filename -- name of the output file
       """
@@ -4275,9 +4119,7 @@ cdef class Model:
 
     def hideOutput(self, quiet = True):
         """Hide the output.
-
         :param quiet: hide output? (Default value = True)
-
         """
         SCIPsetMessagehdlrQuiet(self._scip, quiet)
 
@@ -4296,60 +4138,48 @@ cdef class Model:
 
     def setBoolParam(self, name, value):
         """Set a boolean-valued parameter.
-
         :param name: name of parameter
         :param value: value of parameter
-
         """
         n = str_conversion(name)
         PY_SCIP_CALL(SCIPsetBoolParam(self._scip, n, value))
 
     def setIntParam(self, name, value):
         """Set an int-valued parameter.
-
         :param name: name of parameter
         :param value: value of parameter
-
         """
         n = str_conversion(name)
         PY_SCIP_CALL(SCIPsetIntParam(self._scip, n, value))
 
     def setLongintParam(self, name, value):
         """Set a long-valued parameter.
-
         :param name: name of parameter
         :param value: value of parameter
-
         """
         n = str_conversion(name)
         PY_SCIP_CALL(SCIPsetLongintParam(self._scip, n, value))
 
     def setRealParam(self, name, value):
         """Set a real-valued parameter.
-
         :param name: name of parameter
         :param value: value of parameter
-
         """
         n = str_conversion(name)
         PY_SCIP_CALL(SCIPsetRealParam(self._scip, n, value))
 
     def setCharParam(self, name, value):
         """Set a char-valued parameter.
-
         :param name: name of parameter
         :param value: value of parameter
-
         """
         n = str_conversion(name)
         PY_SCIP_CALL(SCIPsetCharParam(self._scip, n, ord(value)))
 
     def setStringParam(self, name, value):
         """Set a string-valued parameter.
-
         :param name: name of parameter
         :param value: value of parameter
-
         """
         n = str_conversion(name)
         v = str_conversion(value)
@@ -4357,7 +4187,6 @@ cdef class Model:
 
     def setParam(self, name, value):
         """Set a parameter with value in int, bool, real, long, char or str.
-
         :param name: name of parameter
         :param value: value of parameter
         """
@@ -4389,7 +4218,6 @@ cdef class Model:
     def getParam(self, name):
         """Get the value of a parameter of type
         int, bool, real, long, char or str.
-
         :param name: name of parameter
         """
         cdef SCIP_PARAM* param
@@ -4429,7 +4257,6 @@ cdef class Model:
 
     def setParams(self, params):
         """Sets multiple parameters at once.
-
         :param params: dict mapping parameter names to their values.
         """
         for name, value in params.items():
@@ -4437,20 +4264,16 @@ cdef class Model:
 
     def readParams(self, file):
         """Read an external parameter file.
-
         :param file: file to be read
-
         """
         absfile = str_conversion(abspath(file))
         PY_SCIP_CALL(SCIPreadParams(self._scip, absfile))
 
     def writeParams(self, filename='param.set', comments = True, onlychanged = True):
         """Write parameter settings to an external file.
-
         :param filename: file to be written (Default value = 'param.set')
         :param comments: write parameter descriptions as comments? (Default value = True)
         :param onlychanged: write only modified parameters (Default value = True)
-
         """
         fn = str_conversion(filename)
         PY_SCIP_CALL(SCIPwriteParams(self._scip, fn, comments, onlychanged))
@@ -4458,9 +4281,7 @@ cdef class Model:
 
     def resetParam(self, name):
         """Reset parameter setting to its default value
-
         :param name: parameter to reset
-
         """
         n = str_conversion(name)
         PY_SCIP_CALL(SCIPresetParam(self._scip, n))
@@ -4471,19 +4292,15 @@ cdef class Model:
 
     def setEmphasis(self, paraemphasis, quiet = True):
         """Set emphasis settings
-
         :param paraemphasis: emphasis to set
         :param quiet: hide output? (Default value = True)
-
         """
         PY_SCIP_CALL(SCIPsetEmphasis(self._scip, paraemphasis, quiet))
 
     def readProblem(self, filename, extension = None):
         """Read a problem instance from an external file.
-
         :param filename: problem file name
         :param extension: specify file extension/type (Default value = None)
-
         """
         absfile = str_conversion(abspath(filename))
         if extension is None:
@@ -4518,10 +4335,8 @@ cdef class Model:
 
     def chgReoptObjective(self, coeffs, sense = 'minimize'):
         """Establish the objective function as a linear expression.
-
         :param coeffs: the coefficients
         :param sense: the objective sense (Default value = 'minimize')
-
         """
 
         cdef SCIP_OBJSENSE objsense
@@ -4565,7 +4380,6 @@ cdef class Model:
     def chgVarBranchPriority(self, Variable var, priority):
         """Sets the branch priority of the variable.
         Variables with higher branch priority are always preferred to variables with lower priority in selection of branching variable.
-
         :param Variable var: variable to change priority of
         :param priority: the new priority of the variable (the default branching priority is 0)
         """
@@ -4912,6 +4726,317 @@ cdef class Model:
             },
         }
 
+    def getPDState(self, prev_state = None):
+        cdef SCIP* scip = self._scip
+        cdef int i, j, k, col_i
+        cdef SCIP_Real sim, prod
+
+        update = prev_state is not None
+
+        # COLUMNS
+        cdef SCIP_COL** cols = SCIPgetLPCols(scip)
+        cdef int ncols = SCIPgetNLPCols(scip)
+
+        cdef np.ndarray[np.int32_t,   ndim=1] col_types
+        cdef np.ndarray[np.float32_t, ndim=1] col_coefs
+        cdef np.ndarray[np.float32_t, ndim=1] col_lbs
+        cdef np.ndarray[np.float32_t, ndim=1] col_ubs
+        cdef np.ndarray[np.int32_t,   ndim=1] col_basestats
+        cdef np.ndarray[np.float32_t, ndim=1] col_redcosts
+        cdef np.ndarray[np.int32_t,   ndim=1] col_ages
+        cdef np.ndarray[np.float32_t, ndim=1] col_solvals
+        cdef np.ndarray[np.float32_t, ndim=1] col_solfracs
+        cdef np.ndarray[np.int32_t,   ndim=1] col_sol_is_at_lb
+        cdef np.ndarray[np.int32_t,   ndim=1] col_sol_is_at_ub
+        # cdef np.ndarray[np.float32_t, ndim=1] col_incvals
+        # cdef np.ndarray[np.float32_t, ndim=1] col_avgincvals
+
+        if not update:
+            col_types        = np.empty(shape=(ncols, ), dtype=np.int32)
+            col_coefs        = np.empty(shape=(ncols, ), dtype=np.float32)
+            col_lbs          = np.empty(shape=(ncols, ), dtype=np.float32)
+            col_ubs          = np.empty(shape=(ncols, ), dtype=np.float32)
+            col_basestats    = np.empty(shape=(ncols, ), dtype=np.int32)
+            col_redcosts     = np.empty(shape=(ncols, ), dtype=np.float32)
+            col_ages         = np.empty(shape=(ncols, ), dtype=np.int32)
+            col_solvals      = np.empty(shape=(ncols, ), dtype=np.float32)
+            col_solfracs     = np.empty(shape=(ncols, ), dtype=np.float32)
+            col_sol_is_at_lb = np.empty(shape=(ncols, ), dtype=np.int32)
+            col_sol_is_at_ub = np.empty(shape=(ncols, ), dtype=np.int32)
+            # col_incvals      = np.empty(shape=(ncols, ), dtype=np.float32)
+            # col_avgincvals   = np.empty(shape=(ncols, ), dtype=np.float32)
+        else:
+            col_types        = prev_state['col']['types']
+            col_coefs        = prev_state['col']['coefs']
+            col_lbs          = prev_state['col']['lbs']
+            col_ubs          = prev_state['col']['ubs']
+            col_basestats    = prev_state['col']['basestats']
+            col_redcosts     = prev_state['col']['redcosts']
+            col_ages         = prev_state['col']['ages']
+            col_solvals      = prev_state['col']['solvals']
+            col_solfracs     = prev_state['col']['solfracs']
+            col_sol_is_at_lb = prev_state['col']['sol_is_at_lb']
+            col_sol_is_at_ub = prev_state['col']['sol_is_at_ub']
+            # col_incvals      = prev_state['col']['incvals']
+            # col_avgincvals   = prev_state['col']['avgincvals']
+
+        cdef SCIP_SOL* sol = SCIPgetBestSol(scip)
+        cdef SCIP_VAR* var
+        cdef SCIP_Real lb, ub, solval
+        for i in range(ncols):
+            col_i = SCIPcolGetLPPos(cols[i])
+            var = SCIPcolGetVar(cols[i])
+
+            lb = SCIPcolGetLb(cols[i])
+            ub = SCIPcolGetUb(cols[i])
+            solval = SCIPcolGetPrimsol(cols[i])
+
+            if not update:
+                # Variable type
+                col_types[col_i] = SCIPvarGetType(var)
+
+                # Objective coefficient
+                if ub - lb >= 0.0005:
+                    col_coefs[col_i] = SCIPcolGetObj(cols[i])
+                else:
+                    col_coefs[col_i] = 0
+
+            # Lower bound
+            if SCIPisInfinity(scip, REALABS(lb)):
+                col_lbs[col_i] = NAN
+            else:
+                col_lbs[col_i] = lb
+
+            # Upper bound
+            if SCIPisInfinity(scip, REALABS(ub)):
+                col_ubs[col_i] = NAN
+            else:
+                col_ubs[col_i] = ub
+
+            # Basis status
+            col_basestats[col_i] = SCIPcolGetBasisStatus(cols[i])
+
+            # Reduced cost
+            col_redcosts[col_i] = SCIPgetColRedcost(scip, cols[i])
+
+            # Age
+            col_ages[col_i] = cols[i].age
+
+            # LP solution value
+            col_solvals[col_i] = solval
+            col_solfracs[col_i] = SCIPfeasFrac(scip, solval)
+            col_sol_is_at_lb[col_i] = SCIPisEQ(scip, solval, lb)
+            col_sol_is_at_ub[col_i] = SCIPisEQ(scip, solval, ub)
+
+            # Incumbent solution value
+            # if sol is NULL:
+            #     col_incvals[col_i] = NAN
+            #     col_avgincvals[col_i] = NAN
+            # else:
+            #     col_incvals[col_i] = SCIPgetSolVal(scip, sol, var)
+            #     col_avgincvals[col_i] = SCIPvarGetAvgSol(var)
+
+
+        # ROWS
+        cdef int nrows = SCIPgetNLPRows(scip)
+        cdef SCIP_ROW** rows = SCIPgetLPRows(scip)
+
+        cdef np.ndarray[np.float32_t, ndim=1] row_lhss
+        cdef np.ndarray[np.float32_t, ndim=1] row_rhss
+        cdef np.ndarray[np.int32_t,   ndim=1] row_nnzrs
+        cdef np.ndarray[np.float32_t, ndim=1] row_dualsols
+        # cdef np.ndarray[np.int32_t,   ndim=1] row_basestats
+        cdef np.ndarray[np.int32_t,   ndim=1] row_ages
+        cdef np.ndarray[np.float32_t, ndim=1] row_activities
+        cdef np.ndarray[np.float32_t, ndim=1] row_objcossims
+        cdef np.ndarray[np.float32_t, ndim=1] row_norms
+        cdef np.ndarray[np.int32_t,   ndim=1] row_is_at_lhs
+        cdef np.ndarray[np.int32_t,   ndim=1] row_is_at_rhs
+
+        if not update:
+            row_lhss          = np.empty(shape=(nrows, ), dtype=np.float32)
+            row_rhss          = np.empty(shape=(nrows, ), dtype=np.float32)
+            row_nnzrs         = np.empty(shape=(nrows, ), dtype=np.int32)
+            row_dualsols      = np.empty(shape=(nrows, ), dtype=np.float32)
+            is_active         = np.empty(shape=(nrows, ), dtype=np.int32)
+            # row_basestats     = np.empty(shape=(nrows, ), dtype=np.int32)
+            row_ages          = np.empty(shape=(nrows, ), dtype=np.int32)
+            row_activities    = np.empty(shape=(nrows, ), dtype=np.float32)
+            row_objcossims    = np.empty(shape=(nrows, ), dtype=np.float32)
+            row_norms         = np.empty(shape=(nrows, ), dtype=np.float32)
+            row_is_at_lhs     = np.empty(shape=(nrows, ), dtype=np.int32)
+            row_is_at_rhs     = np.empty(shape=(nrows, ), dtype=np.int32)
+            # row_is_local      = np.empty(shape=(nrows, ), dtype=np.int32)
+            # row_is_modifiable = np.empty(shape=(nrows, ), dtype=np.int32)
+            # row_is_removable  = np.empty(shape=(nrows, ), dtype=np.int32)
+        else:
+            row_lhss          = prev_state['row']['lhss']
+            row_rhss          = prev_state['row']['rhss']
+            row_nnzrs         = prev_state['row']['nnzrs']
+            row_dualsols      = prev_state['row']['dualsols']
+            # row_basestats     = prev_state['row']['basestats']
+            row_ages          = prev_state['row']['ages']
+            row_activities    = prev_state['row']['activities']
+            row_objcossims    = prev_state['row']['objcossims']
+            row_norms         = prev_state['row']['norms']
+            row_is_at_lhs     = prev_state['row']['is_at_lhs']
+            row_is_at_rhs     = prev_state['row']['is_at_rhs']
+            # row_is_local      = prev_state['row']['is_local']
+            # row_is_modifiable = prev_state['row']['is_modifiable']
+            # row_is_removable  = prev_state['row']['is_removable']
+
+        cdef int nnzrs = 0
+        cdef SCIP_Real activity, lhs, rhs, cst
+        for i in range(nrows):
+
+            # lhs <= activity + cst <= rhs
+            lhs = SCIProwGetLhs(rows[i])
+            rhs = SCIProwGetRhs(rows[i])
+            cst = SCIProwGetConstant(rows[i])
+            activity = SCIPgetRowLPActivity(scip, rows[i])  # cst is part of activity
+
+            if not update:
+                # number of coefficients
+                row_nnzrs[i] = SCIProwGetNLPNonz(rows[i])
+
+                if SCIPgetRowMaxActivity(scip, rows[i]) >= SCIProwGetRhs(rows[i]) or SCIPgetRowMinActivity(scip, rows[i]) <= SCIProwGetLhs(rows[i]):
+                    is_active[i] = 1
+                    nnzrs += row_nnzrs[i]
+                else:
+                    is_active[i] = 0
+
+                # left-hand-side
+                if SCIPisInfinity(scip, REALABS(lhs)):
+                    row_lhss[i] = NAN
+                else:
+                    row_lhss[i] = lhs - cst
+
+                # right-hand-side
+                if SCIPisInfinity(scip, REALABS(rhs)):
+                    row_rhss[i] = NAN
+                else:
+                    row_rhss[i] = rhs - cst
+
+                # row properties
+                # row_is_local[i] = SCIProwIsLocal(rows[i])
+                # row_is_modifiable[i] = SCIProwIsModifiable(rows[i])
+                # row_is_removable[i] = SCIProwIsRemovable(rows[i])
+
+                # Objective cosine similarity - inspired from SCIProwGetObjParallelism()
+                # SCIPlpRecalculateObjSqrNorm(scip.set, scip.lp)
+                # obj_norm = SCIPgetObjNorm(scip)
+                prod = rows[i].sqrnorm * scip.lp.objsqrnorm
+                row_objcossims[i] = rows[i].objprod / SQRT(prod) if SCIPisPositive(scip, prod) else 0.0
+
+                # L2 norm
+                # row_norms[i] = SCIProwGetNorm(rows[i])  # cst ?
+
+            # Dual solution
+            row_dualsols[i] = SCIProwGetDualsol(rows[i])
+
+            # Basis status
+            # row_basestats[i] = SCIProwGetBasisStatus(rows[i])
+
+            # Age
+            row_ages[i] = SCIProwGetAge(rows[i])
+
+            # Activity
+            row_activities[i] = activity - cst
+
+            # Is tight
+            row_is_at_lhs[i] = SCIPisEQ(scip, activity, lhs)
+            row_is_at_rhs[i] = SCIPisEQ(scip, activity, rhs)
+
+
+        cdef np.ndarray[np.int32_t,   ndim=1] coef_colidxs
+        cdef np.ndarray[np.int32_t,   ndim=1] coef_rowidxs
+        cdef np.ndarray[np.float32_t, ndim=1] coef_vals
+
+        # Row coefficients
+        if not update:
+            coef_colidxs = np.empty(shape=(nnzrs, ), dtype=np.int32)
+            coef_rowidxs = np.empty(shape=(nnzrs, ), dtype=np.int32)
+            coef_vals    = np.empty(shape=(nnzrs, ), dtype=np.float32)
+        else:
+            coef_colidxs = prev_state['nzrcoef']['colidxs']
+            coef_rowidxs = prev_state['nzrcoef']['rowidxs']
+            coef_vals    = prev_state['nzrcoef']['vals']
+
+        cdef SCIP_COL ** row_cols
+        cdef SCIP_Real * row_vals
+
+        if not update:
+            j = 0
+            nefficient_row = 0
+            for i in range(nrows):
+                row_norms[i] = 0
+                # if the row is not redundant
+                if is_active[i]:
+                    # coefficient indexes and values
+                    row_cols = SCIProwGetCols(rows[i])
+                    row_vals = SCIProwGetVals(rows[i])
+                    
+                    nefficient_col = 0
+                    for k in range(row_nnzrs[i]):
+                        # if the col is not redundant
+                        if SCIPcolGetUb(row_cols[k]) != SCIPcolGetLb(row_cols[k]):
+                            coef_colidxs[j+nefficient_col] = SCIPcolGetLPPos(row_cols[k])
+                            coef_rowidxs[j+nefficient_col] = i
+                            coef_vals[j+nefficient_col] = row_vals[k]
+                            row_norms[i] += row_vals[k]**2
+                            nefficient_col += 1
+                    # nefficient_row += 1
+                    j += nefficient_col
+                row_norms[i] = SQRT(row_norms[i])
+                    
+            coef_colidxs = coef_colidxs[:j]
+            coef_rowidxs = coef_rowidxs[:j]
+            coef_vals = coef_vals[:j]
+
+
+        return {
+            'col': {
+                'types':        col_types,
+                'coefs':        col_coefs,
+                'lbs':          col_lbs,
+                'ubs':          col_ubs,
+                'basestats':    col_basestats,
+                'redcosts':     col_redcosts,
+                'ages':         col_ages,
+                'solvals':      col_solvals,
+                'solfracs':     col_solfracs,
+                'sol_is_at_lb': col_sol_is_at_lb,
+                'sol_is_at_ub': col_sol_is_at_ub,
+                # 'incvals':      col_incvals,
+                # 'avgincvals':   col_avgincvals,
+            },
+            'row': {
+                'lhss':          row_lhss,
+                'rhss':          row_rhss,
+                'nnzrs':         row_nnzrs,
+                'dualsols':      row_dualsols,
+                # 'basestats':     row_basestats,
+                'ages':          row_ages,
+                'activities':    row_activities,
+                'objcossims':    row_objcossims,
+                'norms':         row_norms,
+                'is_at_lhs':     row_is_at_lhs,
+                'is_at_rhs':     row_is_at_rhs,
+                # 'is_local':      row_is_local,
+                # 'is_modifiable': row_is_modifiable,
+                # 'is_removable':  row_is_removable,
+            },
+            'nzrcoef': {
+                'colidxs': coef_colidxs,
+                'rowidxs': coef_rowidxs,
+                'vals':    coef_vals,
+            },
+            'stats': {
+                'nlps': SCIPgetNLPs(scip),
+            },
+        }
+
+
     def getSolvingStats(self):
         cdef SCIP* scip = self._scip
 
@@ -5075,7 +5200,679 @@ cdef class Model:
         gains[2] = float(py_gains[2])
         score = SCIPgetBranchScoreMultiple(self._scip, var.scip_var, <int>nchildren, gains)
         return score
-        
+
+    def getKhalilState(self, root_info, candidates, flag='PDN'):
+        cdef SCIP* scip = self._scip
+
+        cdef np.ndarray[np.float32_t, ndim=1] cand_coefs
+        cdef np.ndarray[np.float32_t, ndim=1] cand_coefs_pos
+        cdef np.ndarray[np.float32_t, ndim=1] cand_coefs_neg
+        cdef np.ndarray[np.int32_t, ndim=1]   cand_nnzrs
+        cdef np.ndarray[np.float32_t, ndim=1] cand_root_cdeg_mean
+        cdef np.ndarray[np.float32_t, ndim=1] cand_root_cdeg_var
+        cdef np.ndarray[np.int32_t, ndim=1]   cand_root_cdeg_min
+        cdef np.ndarray[np.int32_t, ndim=1]   cand_root_cdeg_max
+        cdef np.ndarray[np.int32_t, ndim=1]   cand_root_pcoefs_count
+        cdef np.ndarray[np.float32_t, ndim=1] cand_root_pcoefs_mean
+        cdef np.ndarray[np.float32_t, ndim=1] cand_root_pcoefs_var
+        cdef np.ndarray[np.float32_t, ndim=1] cand_root_pcoefs_min
+        cdef np.ndarray[np.float32_t, ndim=1] cand_root_pcoefs_max
+        cdef np.ndarray[np.int32_t, ndim=1]   cand_root_ncoefs_count
+        cdef np.ndarray[np.float32_t, ndim=1] cand_root_ncoefs_mean
+        cdef np.ndarray[np.float32_t, ndim=1] cand_root_ncoefs_var
+        cdef np.ndarray[np.float32_t, ndim=1] cand_root_ncoefs_min
+        cdef np.ndarray[np.float32_t, ndim=1] cand_root_ncoefs_max
+        cdef np.ndarray[np.float32_t, ndim=1] cand_slack
+        cdef np.ndarray[np.float32_t, ndim=1] cand_ps_up
+        cdef np.ndarray[np.float32_t, ndim=1] cand_ps_down
+        cdef np.ndarray[np.float32_t, ndim=1] cand_ps_ratio
+        cdef np.ndarray[np.float32_t, ndim=1] cand_ps_sum
+        cdef np.ndarray[np.float32_t, ndim=1] cand_ps_product
+        cdef np.ndarray[np.float32_t, ndim=1] cand_nb_up_infeas
+        cdef np.ndarray[np.float32_t, ndim=1] cand_nb_down_infeas
+        cdef np.ndarray[np.float32_t, ndim=1] cand_cdeg_mean
+        cdef np.ndarray[np.float32_t, ndim=1] cand_cdeg_var
+        cdef np.ndarray[np.int32_t, ndim=1]   cand_cdeg_min
+        cdef np.ndarray[np.int32_t, ndim=1]   cand_cdeg_max
+        cdef np.ndarray[np.float32_t, ndim=1] cand_cdeg_mean_ratio
+        cdef np.ndarray[np.float32_t, ndim=1] cand_cdeg_min_ratio
+        cdef np.ndarray[np.float32_t, ndim=1] cand_cdeg_max_ratio
+        cdef np.ndarray[np.float32_t, ndim=1] cand_prhs_ratio_max
+        cdef np.ndarray[np.float32_t, ndim=1] cand_prhs_ratio_min
+        cdef np.ndarray[np.float32_t, ndim=1] cand_nrhs_ratio_max
+        cdef np.ndarray[np.float32_t, ndim=1] cand_nrhs_ratio_min
+        cdef np.ndarray[np.float32_t, ndim=1] cand_ota_pp_max
+        cdef np.ndarray[np.float32_t, ndim=1] cand_ota_pp_min
+        cdef np.ndarray[np.float32_t, ndim=1] cand_ota_pn_max
+        cdef np.ndarray[np.float32_t, ndim=1] cand_ota_pn_min
+        cdef np.ndarray[np.float32_t, ndim=1] cand_ota_np_max
+        cdef np.ndarray[np.float32_t, ndim=1] cand_ota_np_min
+        cdef np.ndarray[np.float32_t, ndim=1] cand_ota_nn_max
+        cdef np.ndarray[np.float32_t, ndim=1] cand_ota_nn_min
+        cdef np.ndarray[np.float32_t, ndim=1] cand_acons_sum1
+        cdef np.ndarray[np.float32_t, ndim=1] cand_acons_mean1
+        cdef np.ndarray[np.float32_t, ndim=1] cand_acons_var1
+        cdef np.ndarray[np.float32_t, ndim=1] cand_acons_max1
+        cdef np.ndarray[np.float32_t, ndim=1] cand_acons_min1
+        cdef np.ndarray[np.float32_t, ndim=1] cand_acons_sum2
+        cdef np.ndarray[np.float32_t, ndim=1] cand_acons_mean2
+        cdef np.ndarray[np.float32_t, ndim=1] cand_acons_var2
+        cdef np.ndarray[np.float32_t, ndim=1] cand_acons_max2
+        cdef np.ndarray[np.float32_t, ndim=1] cand_acons_min2
+        cdef np.ndarray[np.float32_t, ndim=1] cand_acons_sum3
+        cdef np.ndarray[np.float32_t, ndim=1] cand_acons_mean3
+        cdef np.ndarray[np.float32_t, ndim=1] cand_acons_var3
+        cdef np.ndarray[np.float32_t, ndim=1] cand_acons_max3
+        cdef np.ndarray[np.float32_t, ndim=1] cand_acons_min3
+        cdef np.ndarray[np.float32_t, ndim=1] cand_acons_sum4
+        cdef np.ndarray[np.float32_t, ndim=1] cand_acons_mean4
+        cdef np.ndarray[np.float32_t, ndim=1] cand_acons_var4
+        cdef np.ndarray[np.float32_t, ndim=1] cand_acons_max4
+        cdef np.ndarray[np.float32_t, ndim=1] cand_acons_min4
+        cdef np.ndarray[np.float32_t, ndim=1] cand_acons_nb1
+        cdef np.ndarray[np.float32_t, ndim=1] cand_acons_nb2
+        cdef np.ndarray[np.float32_t, ndim=1] cand_acons_nb3
+        cdef np.ndarray[np.float32_t, ndim=1] cand_acons_nb4
+
+        cdef int ncands = len(candidates)
+
+        cand_coefs               = np.empty(shape=(ncands, ), dtype=np.float32)
+        cand_coefs_pos           = np.empty(shape=(ncands, ), dtype=np.float32)
+        cand_coefs_neg           = np.empty(shape=(ncands, ), dtype=np.float32)
+        cand_nnzrs               = np.empty(shape=(ncands, ), dtype=np.int32)
+        cand_root_cdeg_mean      = np.empty(shape=(ncands, ), dtype=np.float32)
+        cand_root_cdeg_var       = np.empty(shape=(ncands, ), dtype=np.float32)
+        cand_root_cdeg_min       = np.empty(shape=(ncands, ), dtype=np.int32)
+        cand_root_cdeg_max       = np.empty(shape=(ncands, ), dtype=np.int32)
+        cand_root_pcoefs_count   = np.empty(shape=(ncands, ), dtype=np.int32)
+        cand_root_pcoefs_var     = np.empty(shape=(ncands, ), dtype=np.float32)
+        cand_root_pcoefs_mean    = np.empty(shape=(ncands, ), dtype=np.float32)
+        cand_root_pcoefs_min     = np.empty(shape=(ncands, ), dtype=np.float32)
+        cand_root_pcoefs_max     = np.empty(shape=(ncands, ), dtype=np.float32)
+        cand_root_ncoefs_count   = np.empty(shape=(ncands, ), dtype=np.int32)
+        cand_root_ncoefs_mean    = np.empty(shape=(ncands, ), dtype=np.float32)
+        cand_root_ncoefs_var     = np.empty(shape=(ncands, ), dtype=np.float32)
+        cand_root_ncoefs_min     = np.empty(shape=(ncands, ), dtype=np.float32)
+        cand_root_ncoefs_max     = np.empty(shape=(ncands, ), dtype=np.float32)
+        cand_solfracs            = np.empty(shape=(ncands, ), dtype=np.float32)
+        cand_slack               = np.empty(shape=(ncands, ), dtype=np.float32)
+        cand_ps_up               = np.empty(shape=(ncands, ), dtype=np.float32)
+        cand_ps_down             = np.empty(shape=(ncands, ), dtype=np.float32)
+        cand_ps_ratio            = np.empty(shape=(ncands, ), dtype=np.float32)
+        cand_ps_sum              = np.empty(shape=(ncands, ), dtype=np.float32)
+        cand_ps_product          = np.empty(shape=(ncands, ), dtype=np.float32)
+        cand_frac_up_infeas      = np.empty(shape=(ncands, ), dtype=np.float32)
+        cand_frac_down_infeas    = np.empty(shape=(ncands, ), dtype=np.float32)
+        cand_nb_up_infeas        = np.empty(shape=(ncands, ), dtype=np.float32)
+        cand_nb_down_infeas      = np.empty(shape=(ncands, ), dtype=np.float32)
+        cand_cdeg_mean           = np.empty(shape=(ncands, ), dtype=np.float32)
+        cand_cdeg_var            = np.empty(shape=(ncands, ), dtype=np.float32)
+        cand_cdeg_min            = np.empty(shape=(ncands, ), dtype=np.int32)
+        cand_cdeg_max            = np.empty(shape=(ncands, ), dtype=np.int32)
+        cand_cdeg_mean_ratio     = np.empty(shape=(ncands, ), dtype=np.float32)
+        cand_cdeg_min_ratio      = np.empty(shape=(ncands, ), dtype=np.float32)
+        cand_cdeg_max_ratio      = np.empty(shape=(ncands, ), dtype=np.float32)
+        cand_prhs_ratio_max      = np.empty(shape=(ncands, ), dtype=np.float32)
+        cand_prhs_ratio_min      = np.empty(shape=(ncands, ), dtype=np.float32)
+        cand_nrhs_ratio_max      = np.empty(shape=(ncands, ), dtype=np.float32)
+        cand_nrhs_ratio_min      = np.empty(shape=(ncands, ), dtype=np.float32)
+        cand_ota_pp_max          = np.empty(shape=(ncands, ), dtype=np.float32)
+        cand_ota_pp_min          = np.empty(shape=(ncands, ), dtype=np.float32)
+        cand_ota_pn_max          = np.empty(shape=(ncands, ), dtype=np.float32)
+        cand_ota_pn_min          = np.empty(shape=(ncands, ), dtype=np.float32)
+        cand_ota_np_max          = np.empty(shape=(ncands, ), dtype=np.float32)
+        cand_ota_np_min          = np.empty(shape=(ncands, ), dtype=np.float32)
+        cand_ota_nn_max          = np.empty(shape=(ncands, ), dtype=np.float32)
+        cand_ota_nn_min          = np.empty(shape=(ncands, ), dtype=np.float32)
+        cand_acons_sum1          = np.empty(shape=(ncands, ), dtype=np.float32)
+        cand_acons_mean1         = np.empty(shape=(ncands, ), dtype=np.float32)
+        cand_acons_var1          = np.empty(shape=(ncands, ), dtype=np.float32)
+        cand_acons_max1          = np.empty(shape=(ncands, ), dtype=np.float32)
+        cand_acons_min1          = np.empty(shape=(ncands, ), dtype=np.float32)
+        cand_acons_sum2          = np.empty(shape=(ncands, ), dtype=np.float32)
+        cand_acons_mean2         = np.empty(shape=(ncands, ), dtype=np.float32)
+        cand_acons_var2          = np.empty(shape=(ncands, ), dtype=np.float32)
+        cand_acons_max2          = np.empty(shape=(ncands, ), dtype=np.float32)
+        cand_acons_min2          = np.empty(shape=(ncands, ), dtype=np.float32)
+        cand_acons_sum3          = np.empty(shape=(ncands, ), dtype=np.float32)
+        cand_acons_mean3         = np.empty(shape=(ncands, ), dtype=np.float32)
+        cand_acons_var3          = np.empty(shape=(ncands, ), dtype=np.float32)
+        cand_acons_max3          = np.empty(shape=(ncands, ), dtype=np.float32)
+        cand_acons_min3          = np.empty(shape=(ncands, ), dtype=np.float32)
+        cand_acons_sum4          = np.empty(shape=(ncands, ), dtype=np.float32)
+        cand_acons_mean4         = np.empty(shape=(ncands, ), dtype=np.float32)
+        cand_acons_var4          = np.empty(shape=(ncands, ), dtype=np.float32)
+        cand_acons_max4          = np.empty(shape=(ncands, ), dtype=np.float32)
+        cand_acons_min4          = np.empty(shape=(ncands, ), dtype=np.float32)
+        cand_acons_nb1           = np.empty(shape=(ncands, ), dtype=np.float32)
+        cand_acons_nb2           = np.empty(shape=(ncands, ), dtype=np.float32)
+        cand_acons_nb3           = np.empty(shape=(ncands, ), dtype=np.float32)
+        cand_acons_nb4           = np.empty(shape=(ncands, ), dtype=np.float32)
+
+        cdef SCIP_COL** cols = SCIPgetLPCols(scip)
+        cdef int ncols = SCIPgetNLPCols(scip)
+        cdef int i, cand_i, col_i
+
+        # Static
+        # ------
+        cdef SCIP_ROW** neighbors
+        cdef SCIP_Real* nonzero_coefs_raw
+        cdef SCIP_Real* all_coefs_raw
+        cdef SCIP_Real activity, lhs, rhs, coef
+        cdef SCIP_VAR* var
+        cdef SCIP_COL* col
+        cdef int neighbor_index, cdeg_max, cdeg_min, cdeg, nb_neighbors
+        cdef float cdeg_mean, cdeg_var
+        cdef int pcoefs_count, ncoefs_count
+        cdef float pcoefs_var, pcoefs_mean, pcoefs_min, pcoefs_max
+        cdef float ncoefs_var, ncoefs_mean, ncoefs_min, ncoefs_max
+
+        # if at root node, extract root information
+        if SCIPgetNNodes(scip) == 1 or (SCIPgetNNodes(scip) == 2 and flag == 'PDN'):
+            root_info['col'] = {}
+            root_info['col']['coefs']               = {}
+            root_info['col']['coefs_pos']           = {}
+            root_info['col']['coefs_neg']           = {}
+            root_info['col']['nnzrs']               = {}
+            root_info['col']['root_cdeg_mean']      = {}
+            root_info['col']['root_cdeg_var']       = {}
+            root_info['col']['root_cdeg_min']       = {}
+            root_info['col']['root_cdeg_max']       = {}
+            root_info['col']['root_pcoefs_count']   = {}
+            root_info['col']['root_pcoefs_var']     = {}
+            root_info['col']['root_pcoefs_mean']    = {}
+            root_info['col']['root_pcoefs_min']     = {}
+            root_info['col']['root_pcoefs_max']     = {}
+            root_info['col']['root_ncoefs_count']   = {}
+            root_info['col']['root_ncoefs_mean']    = {}
+            root_info['col']['root_ncoefs_var']     = {}
+            root_info['col']['root_ncoefs_min']     = {}
+            root_info['col']['root_ncoefs_max']     = {}
+            for i in range(ncols):
+                col = cols[i]
+                col_i = SCIPcolGetIndex(col)
+                neighbors = SCIPcolGetRows(col)
+                nb_neighbors = SCIPcolGetNNonz(col)
+                nonzero_coefs_raw = SCIPcolGetVals(col)
+
+                # Objective function coeffs. (3)
+                #   Value of the coefficient (raw, positive only, negative only)
+                root_info['col']['coefs'][col_i]     = SCIPcolGetObj(col)
+                root_info['col']['coefs_pos'][col_i] = max(root_info['col']['coefs'][col_i], 0)
+                root_info['col']['coefs_neg'][col_i] = min(root_info['col']['coefs'][col_i], 0)
+
+                # Num. constraints (1)
+                #   Number of constraints that the variable participates in (with a non-zero coefficient)
+                root_info['col']['nnzrs'][col_i] = nb_neighbors
+
+                # Stats. for constraint degrees (4)
+                #   The degree of a constraint is the number of variables that participate in it. A variable may
+                #   participate in multiple constraints, and statistics over those constraints’ degrees are used.
+                #   The constraint degree is computed on the root LP (mean, stdev., min, max)
+                cdeg_var, cdeg_mean, cdeg_min, cdeg_max = 0, 0, 0, 0
+                if nb_neighbors > 0:
+                    for neighbor_index in range(nb_neighbors):
+                        cdeg = SCIProwGetNNonz(neighbors[neighbor_index])
+                        cdeg_mean += cdeg
+                        cdeg_max = cdeg if neighbor_index == 0 else max(cdeg_max, cdeg)
+                        cdeg_min = cdeg if neighbor_index == 0 else min(cdeg_min, cdeg)
+                    cdeg_mean /= nb_neighbors
+                    for neighbor_index in range(nb_neighbors):
+                        cdeg_var += (cdeg - cdeg_mean)**2
+                    cdeg_var /= nb_neighbors
+                root_info['col']['root_cdeg_mean'][col_i] = cdeg_mean
+                root_info['col']['root_cdeg_var'][col_i] = cdeg_var
+                root_info['col']['root_cdeg_min'][col_i] = cdeg_min
+                root_info['col']['root_cdeg_max'][col_i] = cdeg_max
+
+                # Stats. for constraint coeffs. (10)
+                #   A variable’s positive (negative) coefficients in the constraints it participates in
+                #   (count, mean, stdev., min, max)
+                pcoefs_var, pcoefs_mean, pcoefs_min, pcoefs_max = 0, 0, 0, 0.
+                ncoefs_var, ncoefs_mean, ncoefs_min, ncoefs_max = 0, 0, 0, 0.
+                pcoefs_count, ncoefs_count = 0, 0
+                for neighbor_index in range(nb_neighbors):
+                    coef = nonzero_coefs_raw[neighbor_index]
+                    if coef > 0:
+                        pcoefs_count += 1
+                        pcoefs_mean = coef
+                        pcoefs_min = coef if pcoefs_count == 1 else min(pcoefs_min, coef)
+                        pcoefs_max = coef if pcoefs_count == 1 else max(pcoefs_max, coef)
+                    if coef < 0:
+                        ncoefs_count += 1
+                        ncoefs_mean += coef
+                        ncoefs_min = coef if ncoefs_count == 1 else min(ncoefs_min, coef)
+                        ncoefs_max = coef if ncoefs_count == 1 else max(ncoefs_max, coef)
+                if pcoefs_count > 0:
+                    pcoefs_mean /= pcoefs_count
+                if ncoefs_count > 0:
+                    ncoefs_mean /= ncoefs_count
+                for neighbor_index in range(nb_neighbors):
+                    coef = nonzero_coefs_raw[neighbor_index]
+                    if coef > 0:
+                        pcoefs_var += (coef - pcoefs_mean)**2
+                    if coef < 0:
+                        ncoefs_var += (coef - ncoefs_mean)**2
+                if pcoefs_count > 0:
+                    pcoefs_var /= pcoefs_count
+                if ncoefs_count > 0:
+                    ncoefs_var /= ncoefs_count
+                root_info['col']['root_pcoefs_count'][col_i] = pcoefs_count
+                root_info['col']['root_pcoefs_mean'][col_i]  = pcoefs_mean
+                root_info['col']['root_pcoefs_var'][col_i]   = pcoefs_var
+                root_info['col']['root_pcoefs_min'][col_i]   = pcoefs_min
+                root_info['col']['root_pcoefs_max'][col_i]   = pcoefs_max
+                root_info['col']['root_ncoefs_count'][col_i] = ncoefs_count
+                root_info['col']['root_ncoefs_mean'][col_i]  = ncoefs_mean
+                root_info['col']['root_ncoefs_var'][col_i]   = ncoefs_var
+                root_info['col']['root_ncoefs_min'][col_i]   = ncoefs_min
+                root_info['col']['root_ncoefs_max'][col_i]   = ncoefs_max
+
+        for cand_i in range(ncands):
+            var = (<Variable>candidates[cand_i]).scip_var
+            col = SCIPvarGetCol(var)
+            col_i = SCIPcolGetIndex(col)
+            cand_coefs[cand_i]             = root_info['col']['coefs'][col_i]
+            cand_coefs_pos[cand_i]         = root_info['col']['coefs_pos'][col_i]
+            cand_coefs_neg[cand_i]         = root_info['col']['coefs_neg'][col_i]
+            cand_nnzrs[cand_i]             = root_info['col']['nnzrs'][col_i]
+            cand_root_cdeg_mean[cand_i]    = root_info['col']['root_cdeg_mean'][col_i]
+            cand_root_cdeg_var[cand_i]     = root_info['col']['root_cdeg_var'][col_i]
+            cand_root_cdeg_min[cand_i]     = root_info['col']['root_cdeg_min'][col_i]
+            cand_root_cdeg_max[cand_i]     = root_info['col']['root_cdeg_max'][col_i]
+            cand_root_pcoefs_count[cand_i] = root_info['col']['root_pcoefs_count'][col_i]
+            cand_root_pcoefs_mean[cand_i]  = root_info['col']['root_pcoefs_mean'][col_i]
+            cand_root_pcoefs_var[cand_i]   = root_info['col']['root_pcoefs_var'][col_i]
+            cand_root_pcoefs_min[cand_i]   = root_info['col']['root_pcoefs_min'][col_i]
+            cand_root_pcoefs_max[cand_i]   = root_info['col']['root_pcoefs_max'][col_i]
+            cand_root_ncoefs_count[cand_i] = root_info['col']['root_ncoefs_count'][col_i]
+            cand_root_ncoefs_mean[cand_i]  = root_info['col']['root_ncoefs_mean'][col_i]
+            cand_root_ncoefs_var[cand_i]   = root_info['col']['root_ncoefs_var'][col_i]
+            cand_root_ncoefs_min[cand_i]   = root_info['col']['root_ncoefs_min'][col_i]
+            cand_root_ncoefs_max[cand_i]   = root_info['col']['root_ncoefs_max'][col_i]
+
+        # Simple dynamic
+        # --------------
+        cdef int neighbor_column_index, neighbor_ncolumns
+        cdef float solval, pos_coef_sum, neg_coef_sum, neighbor_coef
+        cdef float ota_pp_max, ota_pp_min, ota_pn_max, ota_pn_min
+        cdef float ota_np_max, ota_np_min, ota_nn_max, ota_nn_min
+        cdef float prhs_ratio_max, prhs_ratio_min
+        cdef float nrhs_ratio_max, nrhs_ratio_min
+        cdef float value, pratio, nratio
+        cdef SCIP_VAR* neighbor_var
+        cdef SCIP_Real* neighbor_columns_values
+        cdef int nbranchings
+        for cand_i in range(ncands):
+            var = (<Variable>candidates[cand_i]).scip_var
+            col = SCIPvarGetCol(var)
+            neighbors = SCIPcolGetRows(col)
+            nb_neighbors = SCIPcolGetNNonz(col)
+            nonzero_coefs_raw = SCIPcolGetVals(col)
+
+            # Slack and ceil distances (2)
+            #   min{xij−floor(xij),ceil(xij) −xij} and ceil(xij) −xij
+            solval = SCIPcolGetPrimsol(col)
+            cand_solfracs[cand_i] = SCIPfeasFrac(scip, solval)
+            cand_slack[cand_i] = min(cand_solfracs[cand_i], 1-cand_solfracs[cand_i])
+
+            # Pseudocosts (5)
+            #   Upwards and downwards values, and their corresponding ratio, sum and product,
+            #   weighted by the fractionality of xj
+            cand_ps_up[cand_i] = SCIPgetVarPseudocost(scip, var, SCIP_BRANCHDIR_UPWARDS)
+            cand_ps_down[cand_i] = SCIPgetVarPseudocost(scip, var, SCIP_BRANCHDIR_DOWNWARDS)
+            cand_ps_sum[cand_i] = cand_ps_up[cand_i] + cand_ps_down[cand_i]
+            cand_ps_ratio[cand_i] = 0 if cand_ps_up[cand_i] == 0 else cand_ps_up[cand_i] / cand_ps_sum[cand_i]
+            cand_ps_product[cand_i] = cand_ps_up[cand_i] * cand_ps_down[cand_i]
+
+            # Infeasibility statistics (4)
+            #   Number and fraction of nodes for which applying SB to variable xj led to one (two)
+            #   infeasible children (during data collection)
+            # N.B. replaced by left, right infeasibility
+            cand_nb_up_infeas[cand_i]   = SCIPvarGetCutoffSum(var, SCIP_BRANCHDIR_UPWARDS)
+            cand_nb_down_infeas[cand_i] = SCIPvarGetCutoffSum(var, SCIP_BRANCHDIR_DOWNWARDS)
+            nbranchings = SCIPvarGetNBranchings(var, SCIP_BRANCHDIR_UPWARDS)
+            cand_frac_up_infeas[cand_i]   = 0 if nbranchings == 0 else cand_nb_up_infeas[cand_i] / nbranchings
+            nbranchings = SCIPvarGetNBranchings(var, SCIP_BRANCHDIR_DOWNWARDS)
+            cand_frac_down_infeas[cand_i] = 0 if nbranchings == 0 else cand_nb_down_infeas[cand_i] / nbranchings
+
+            # Stats. for constraint degrees (7)
+            #   A dynamic variant of the static version above. Here, the constraint degrees are
+            #   on the current node’s LP.The ratios of the static mean, maximum and minimum to
+            #   their dynamic counterparts are also features
+            cdeg_var, cdeg_mean, cdeg_min, cdeg_max = 0, 0, 0, 0
+            if nb_neighbors > 0:
+                for neighbor_index in range(nb_neighbors):
+                    cdeg = SCIProwGetNLPNonz(neighbors[neighbor_index])
+                    cdeg_mean += cdeg
+                    cdeg_max = cdeg if neighbor_index == 0 else max(cdeg_max, cdeg)
+                    cdeg_min = cdeg if neighbor_index == 0 else min(cdeg_min, cdeg)
+                cdeg_mean /= nb_neighbors
+                for neighbor_index in range(nb_neighbors):
+                    cdeg = SCIProwGetNLPNonz(neighbors[neighbor_index])
+                    cdeg_var += (cdeg - cdeg_mean)**2
+                cdeg_var /= nb_neighbors
+            cand_cdeg_mean[cand_i] = cdeg_mean
+            cand_cdeg_var[cand_i]  = cdeg_var
+            cand_cdeg_min[cand_i]  = cdeg_min
+            cand_cdeg_max[cand_i]  = cdeg_max
+            cand_cdeg_mean_ratio[cand_i] = 0 if cdeg_mean == 0 else cdeg_mean / (cand_root_cdeg_mean[cand_i] + cdeg_mean)
+            cand_cdeg_min_ratio[cand_i]  = 0 if cdeg_min == 0 else cdeg_min / (cand_root_cdeg_min[cand_i] + cdeg_min)
+            cand_cdeg_max_ratio[cand_i]  = 0 if cdeg_max == 0 else cdeg_max / (cand_root_cdeg_max[cand_i] + cdeg_max)
+
+            # Min/max for ratios of constraint coeffs. to RHS (4)
+            #   Minimum and maximum ratios across positive and negative right-hand-sides (RHS)
+            prhs_ratio_max, prhs_ratio_min = -1, 1
+            nrhs_ratio_max, nrhs_ratio_min = -1, 1
+            for neighbor_index in range(nb_neighbors):
+                coef = nonzero_coefs_raw[neighbor_index]
+                rhs = SCIProwGetRhs(neighbors[neighbor_index])
+                lhs = SCIProwGetLhs(neighbors[neighbor_index])
+                if not SCIPisInfinity(scip, REALABS(rhs)):
+                    value = 0 if coef == 0 else coef / (REALABS(coef) + REALABS(rhs))
+                    if rhs >= 0:
+                        rhs_ratio_max = max(prhs_ratio_max, value)
+                        rhs_ratio_min = min(prhs_ratio_min, value)
+                    else:
+                        nrhs_ratio_max = max(nrhs_ratio_max, value)
+                        nrhs_ratio_min = min(nrhs_ratio_min, value)
+                if not SCIPisInfinity(scip, REALABS(lhs)):
+                    value = 0 if coef == 0 else coef / (REALABS(coef) + REALABS(lhs))
+                    if -lhs >= 0:
+                        prhs_ratio_max = max(prhs_ratio_max, value)
+                        prhs_ratio_min = min(prhs_ratio_min, value)
+                    else:
+                        nrhs_ratio_max = max(nrhs_ratio_max, value)
+                        nrhs_ratio_min = min(nrhs_ratio_min, value)
+            cand_prhs_ratio_max[cand_i] = prhs_ratio_max
+            cand_prhs_ratio_min[cand_i] = prhs_ratio_min
+            cand_nrhs_ratio_max[cand_i] = nrhs_ratio_max
+            cand_nrhs_ratio_min[cand_i] = nrhs_ratio_min
+
+            # Min/max for one-to-all coefficient ratios (8)
+            #   The statistics are over the ratios of a variable’s coefficient, to the sum over all
+            #   other variables’ coefficients, for a given constraint. Four versions of these ratios
+            #   are considered: positive (negative) coefficient to sum of positive (negative) coefficients
+            ota_pp_max, ota_pp_min, ota_pn_max, ota_pn_min = 0, 1, 0, 1
+            ota_np_max, ota_np_min, ota_nn_max, ota_nn_min = 0, 1, 0, 1
+            for neighbor_index in range(nb_neighbors):
+                all_coefs_raw = SCIProwGetVals(neighbors[neighbor_index])
+                neighbor_ncolumns = SCIProwGetNNonz(neighbors[neighbor_index])
+                pos_coef_sum, neg_coef_sum = 0, 0
+                for neighbor_column_index in range(neighbor_ncolumns):
+                    neighbor_coef = all_coefs_raw[neighbor_column_index]
+                    if neighbor_coef > 0:
+                        pos_coef_sum += neighbor_coef
+                    else:
+                        neg_coef_sum += neighbor_coef
+                coef = nonzero_coefs_raw[neighbor_index]
+                if coef > 0:
+                    pratio = coef / pos_coef_sum
+                    nratio = coef / (coef - neg_coef_sum)
+                    ota_pp_max = max(ota_pp_max, pratio)
+                    ota_pp_min = min(ota_pp_min, pratio)
+                    ota_pn_max = max(ota_pn_max, nratio)
+                    ota_pn_min = min(ota_pn_min, nratio)
+                if coef < 0:
+                    pratio = coef / (coef - pos_coef_sum)
+                    nratio = coef / neg_coef_sum
+                    ota_np_max = max(ota_np_max, pratio)
+                    ota_np_min = min(ota_np_min, pratio)
+                    ota_nn_max = max(ota_nn_max, nratio)
+                    ota_nn_min = min(ota_nn_min, nratio)
+            cand_ota_pp_max[cand_i] = ota_pp_max
+            cand_ota_pp_min[cand_i] = ota_pp_min
+            cand_ota_pn_max[cand_i] = ota_pn_max
+            cand_ota_pn_min[cand_i] = ota_pn_min
+            cand_ota_np_max[cand_i] = ota_np_max
+            cand_ota_np_min[cand_i] = ota_np_min
+            cand_ota_nn_max[cand_i] = ota_nn_max
+            cand_ota_nn_min[cand_i] = ota_nn_min
+
+        # Active dynamic
+        # --------------
+        # Stats. for active constraint coefficients (24)
+        #   An active constraint at a node LP is one which is binding with equality at the optimum.
+        #   We consider 4 weighting schemes for an active constraint: unit weight, inverse of the
+        #   sum of the coefficients of all variables in constraint, inverse of the sum of the coefficients
+        #   of only candidate variables in constraint, dual cost of the constraint. Given the absolute
+        #   value of the coefficients of xj in the active constraints, we compute the sum, mean, stdev.,
+        #   max. and min. of those values, for each of the weighting schemes. We also compute the weighted
+        #   number of active constraints that xj is in, with the same 4 weightings
+        cdef int row_index
+        cdef int nrows = SCIPgetNLPRows(scip)
+        cdef SCIP_ROW** rows = SCIPgetLPRows(scip)
+        cdef float constraint_sum, abs_coef
+        cdef SCIP_COL** neighbor_columns
+        cdef int neighbor_var_index, candidate_index
+        cdef int active_count
+        cdef float acons_sum1, acons_mean1, acons_var1, acons_max1, acons_min1
+        cdef float acons_sum2, acons_mean2, acons_var2, acons_max2, acons_min2
+        cdef float acons_sum3, acons_mean3, acons_var3, acons_max3, acons_min3
+        cdef float acons_sum4, acons_mean4, acons_var4, acons_max4, acons_min4
+        cdef float acons_nb1, acons_nb2, acons_nb3, acons_nb4
+        cdef np.ndarray[np.float32_t, ndim=1] act_cons_w1, act_cons_w2, act_cons_w3, act_cons_w4
+
+        act_cons_w1 = np.zeros(shape=(nrows, ), dtype=np.float32)
+        act_cons_w2 = np.zeros(shape=(nrows, ), dtype=np.float32)
+        act_cons_w3 = np.zeros(shape=(nrows, ), dtype=np.float32)
+        act_cons_w4 = np.zeros(shape=(nrows, ), dtype=np.float32)
+        for row_index in range(nrows):
+            row = rows[row_index]
+            rhs = SCIProwGetRhs(row)
+            lhs = SCIProwGetLhs(row)
+            activity = SCIPgetRowActivity(scip, row)
+            # N.B. active if activity = lhs or rhs
+            if SCIPisEQ(scip, activity, rhs) or SCIPisEQ(scip, activity, lhs):
+                neighbor_columns = SCIProwGetCols(row)
+                neighbor_ncolumns = SCIProwGetNNonz(row)
+                neighbor_columns_values = SCIProwGetVals(row)
+
+                # weight no. 1
+                # unit weight
+                act_cons_w1[row_index] = 1
+
+                # weight no. 2
+                # inverse of the sum of the coefficients of all variables in constraint
+                constraint_sum = 0
+                for neighbor_column_index in range(neighbor_ncolumns):
+                    constraint_sum += REALABS(neighbor_columns_values[neighbor_column_index])
+                act_cons_w2[row_index] = 1 if constraint_sum == 0 else 1 / constraint_sum
+
+                # weight no. 3
+                # inverse of the sum of the coefficients of only candidate variables in constraint
+                constraint_sum = 0
+                for neighbor_column_index in range(neighbor_ncolumns):
+                    neighbor_var = SCIPcolGetVar(neighbor_columns[neighbor_column_index])
+                    neighbor_var_index = SCIPvarGetIndex(neighbor_var)
+                    for cand_i in range(ncands):
+                        var = (<Variable>candidates[cand_i]).scip_var
+                        if SCIPvarGetIndex(var) == neighbor_var_index:
+                            constraint_sum += REALABS(neighbor_columns_values[neighbor_column_index])
+                            break
+                act_cons_w3[row_index] = 1 if constraint_sum == 0 else 1 / constraint_sum
+
+                # weight no. 4
+                # dual cost of the constraint
+                act_cons_w4[row_index] = REALABS(SCIProwGetDualsol(row))
+
+        for cand_i in range(ncands):
+            var = (<Variable>candidates[cand_i]).scip_var
+            col = SCIPvarGetCol(var)
+            neighbors = SCIPcolGetRows(col)
+            nb_neighbors = SCIPcolGetNNonz(col)
+            nonzero_coefs_raw = SCIPcolGetVals(col)
+
+            acons_sum1, acons_mean1, acons_var1, acons_max1, acons_min1 = 0, 0, 0, 0, 0
+            acons_sum2, acons_mean2, acons_var2, acons_max2, acons_min2 = 0, 0, 0, 0, 0
+            acons_sum3, acons_mean3, acons_var3, acons_max3, acons_min3 = 0, 0, 0, 0, 0
+            acons_sum4, acons_mean4, acons_var4, acons_max4, acons_min4 = 0, 0, 0, 0, 0
+            acons_nb1,  acons_nb2,   acons_nb3,   acons_nb4             = 0, 0, 0, 0
+            active_count = 0
+            for neighbor_index in range(nb_neighbors):
+                rhs = SCIProwGetRhs(neighbors[neighbor_index])
+                lhs = SCIProwGetLhs(neighbors[neighbor_index])
+                activity = SCIPgetRowActivity(scip, neighbors[neighbor_index])
+                # N.B. active if activity = lhs or rhs
+                if SCIPisEQ(scip, activity, rhs) or SCIPisEQ(scip, activity, lhs):
+                    active_count += 1
+                    neighbor_row_index = SCIProwGetLPPos(neighbors[neighbor_index])
+                    abs_coef = REALABS(nonzero_coefs_raw[neighbor_index])
+
+                    acons_nb1 += act_cons_w1[neighbor_row_index]
+                    value = act_cons_w1[neighbor_row_index] * abs_coef
+                    acons_sum1 += value
+                    acons_max1 = value if active_count == 1 else max(acons_max1, value)
+                    acons_min1 = value if active_count == 1 else min(acons_min1, value)
+
+                    acons_nb2 += act_cons_w2[neighbor_row_index]
+                    value = act_cons_w2[neighbor_row_index] * abs_coef
+                    acons_sum2 += value
+                    acons_max2 = value if active_count == 1 else max(acons_max2, value)
+                    acons_min2 = value if active_count == 1 else min(acons_min2, value)
+
+                    acons_nb3 += act_cons_w3[neighbor_row_index]
+                    value = act_cons_w3[neighbor_row_index] * abs_coef
+                    acons_sum3 += value
+                    acons_max3 = value if active_count == 1 else max(acons_max3, value)
+                    acons_min3 = value if active_count == 1 else min(acons_min3, value)
+
+                    acons_nb4 += act_cons_w4[neighbor_row_index]
+                    value = act_cons_w4[neighbor_row_index] * abs_coef
+                    acons_sum4 += value
+                    acons_max4 = value if active_count == 1 else max(acons_max4, value)
+                    acons_min4 = value if active_count == 1 else min(acons_min4, value)
+
+            if active_count > 0:
+                acons_mean1 = acons_sum1 / active_count
+                acons_mean2 = acons_sum2 / active_count
+                acons_mean3 = acons_sum3 / active_count
+                acons_mean4 = acons_sum4 / active_count
+                for neighbor_index in range(nb_neighbors):
+                    rhs = SCIProwGetRhs(neighbors[neighbor_index])
+                    lhs = SCIProwGetLhs(neighbors[neighbor_index])
+                    activity = SCIPgetRowActivity(scip, neighbors[neighbor_index])
+                    # N.B. active if activity = lhs or rhs
+                    if SCIPisEQ(scip, activity, rhs) or SCIPisEQ(scip, activity, lhs):
+                        neighbor_row_index = SCIProwGetLPPos(neighbors[neighbor_index])
+                        abs_coef = REALABS(nonzero_coefs_raw[neighbor_index])
+
+                        value = act_cons_w1[neighbor_row_index] * abs_coef
+                        acons_var1 += (value - acons_mean1)**2
+
+                        value = act_cons_w2[neighbor_row_index] * abs_coef
+                        acons_var2 += (value - acons_mean2)**2
+
+                        value = act_cons_w3[neighbor_row_index] * abs_coef
+                        acons_var3 += (value - acons_mean3)**2
+
+                        value = act_cons_w4[neighbor_row_index] * abs_coef
+                        acons_var4 += (value - acons_mean4)**2
+                acons_var1 /= active_count
+                acons_var2 /= active_count
+                acons_var3 /= active_count
+                acons_var4 /= active_count
+
+            cand_acons_sum1[cand_i]  = acons_sum1
+            cand_acons_sum2[cand_i]  = acons_sum2
+            cand_acons_sum3[cand_i]  = acons_sum3
+            cand_acons_sum4[cand_i]  = acons_sum4
+            cand_acons_mean1[cand_i] = acons_mean1
+            cand_acons_mean2[cand_i] = acons_mean2
+            cand_acons_mean3[cand_i] = acons_mean3
+            cand_acons_mean4[cand_i] = acons_mean4
+            cand_acons_max1[cand_i]  = acons_max1
+            cand_acons_max2[cand_i]  = acons_max2
+            cand_acons_max3[cand_i]  = acons_max3
+            cand_acons_max4[cand_i]  = acons_max4
+            cand_acons_min1[cand_i]  = acons_min1
+            cand_acons_min2[cand_i]  = acons_min2
+            cand_acons_min3[cand_i]  = acons_min3
+            cand_acons_min4[cand_i]  = acons_min4
+            cand_acons_var1[cand_i]  = acons_var1
+            cand_acons_var2[cand_i]  = acons_var2
+            cand_acons_var3[cand_i]  = acons_var3
+            cand_acons_var4[cand_i]  = acons_var4
+            cand_acons_nb1[cand_i]   = acons_nb1
+            cand_acons_nb2[cand_i]   = acons_nb2
+            cand_acons_nb3[cand_i]   = acons_nb3
+            cand_acons_nb4[cand_i]   = acons_nb4
+
+        return {
+            'coefs':                cand_coefs,
+            'coefs_pos':            cand_coefs_pos,
+            'coefs_neg':            cand_coefs_neg,
+            'nnzrs':                cand_nnzrs,
+            'root_cdeg_mean':       cand_root_cdeg_mean,
+            'root_cdeg_var':        cand_root_cdeg_var,
+            'root_cdeg_min':        cand_root_cdeg_min,
+            'root_cdeg_max':        cand_root_cdeg_max,
+            'root_pcoefs_count':    cand_root_pcoefs_count,
+            'root_pcoefs_mean':     cand_root_pcoefs_mean,
+            'root_pcoefs_var':      cand_root_pcoefs_var,
+            'root_pcoefs_min':      cand_root_pcoefs_min,
+            'root_pcoefs_max':      cand_root_pcoefs_max,
+            'root_ncoefs_count':    cand_root_ncoefs_count,
+            'root_ncoefs_mean':     cand_root_ncoefs_mean,
+            'root_ncoefs_var':      cand_root_ncoefs_var,
+            'root_ncoefs_min':      cand_root_ncoefs_min,
+            'root_ncoefs_max':      cand_root_ncoefs_max,
+            'solfracs':             cand_solfracs,
+            'slack':                cand_slack,
+            'ps_up':                cand_ps_up,
+            'ps_down':              cand_ps_down,
+            'ps_ratio':             cand_ps_ratio,
+            'ps_sum':               cand_ps_sum,
+            'ps_product':           cand_ps_product,
+            'nb_up_infeas':         cand_nb_up_infeas,
+            'nb_down_infeas':       cand_nb_down_infeas,
+            'frac_up_infeas':       cand_frac_up_infeas,
+            'frac_down_infeas':     cand_frac_down_infeas,
+            'cdeg_mean':            cand_cdeg_mean,
+            'cdeg_var':             cand_cdeg_var,
+            'cdeg_min':             cand_cdeg_min,
+            'cdeg_max':             cand_cdeg_max,
+            'cdeg_mean_ratio':      cand_cdeg_mean_ratio,
+            'cdeg_min_ratio':       cand_cdeg_min_ratio,
+            'cdeg_max_ratio':       cand_cdeg_max_ratio,
+            'prhs_ratio_max':       cand_prhs_ratio_max,
+            'prhs_ratio_min':       cand_prhs_ratio_min,
+            'nrhs_ratio_max':       cand_nrhs_ratio_max,
+            'nrhs_ratio_min':       cand_nrhs_ratio_min,
+            'ota_pp_max':           cand_ota_pp_max,
+            'ota_pp_min':           cand_ota_pp_min,
+            'ota_pn_max':           cand_ota_pn_max,
+            'ota_pn_min':           cand_ota_pn_min,
+            'ota_np_max':           cand_ota_np_max,
+            'ota_np_min':           cand_ota_np_min,
+            'ota_nn_max':           cand_ota_nn_max,
+            'ota_nn_min':           cand_ota_nn_min,
+            'acons_sum1':           cand_acons_sum1,
+            'acons_mean1':          cand_acons_mean1,
+            'acons_var1':           cand_acons_var1,
+            'acons_max1':           cand_acons_max1,
+            'acons_min1':           cand_acons_min1,
+            'acons_sum2':           cand_acons_sum2,
+            'acons_mean2':          cand_acons_mean2,
+            'acons_var2':           cand_acons_var2,
+            'acons_max2':           cand_acons_max2,
+            'acons_min2':           cand_acons_min2,
+            'acons_sum3':           cand_acons_sum3,
+            'acons_mean3':          cand_acons_mean3,
+            'acons_var3':           cand_acons_var3,
+            'acons_max3':           cand_acons_max3,
+            'acons_min3':           cand_acons_min3,
+            'acons_sum4':           cand_acons_sum4,
+            'acons_mean4':          cand_acons_mean4,
+            'acons_var4':           cand_acons_var4,
+            'acons_max4':           cand_acons_max4,
+            'acons_min4':           cand_acons_min4,
+            'acons_nb1':            cand_acons_nb1,
+            'acons_nb2':            cand_acons_nb2,
+            'acons_nb3':            cand_acons_nb3,
+            'acons_nb4':            cand_acons_nb4,
+        }
+
     def getVariablePseudocost(self, variable):
         cdef float ps_up, ps_down
         cdef SCIP_VAR* scip_var = (<Variable>variable).scip_var
@@ -5083,6 +5880,29 @@ cdef class Model:
         ps_up = SCIPgetVarPseudocost(self._scip, scip_var, SCIP_BRANCHDIR_UPWARDS)
         ps_down = SCIPgetVarPseudocost(self._scip, scip_var, SCIP_BRANCHDIR_DOWNWARDS)
         return ps_up * ps_down
+
+    def getRowMaxActivity(self, Row row):
+        """returns the maximal activity of a row w.r.t. the column's bounds"""
+        return SCIPgetRowMaxActivity(self._scip, row.scip_row)
+
+    def getRowMinActivity(self, Row row):
+        """returns the minimal activity of a row w.r.t. the column's bounds"""
+        return SCIPgetRowMinActivity(self._scip, row.scip_row)
+
+    def getNStrongbranchs(self):
+        '''gets total number of times, strong branching was called (each call represents solving two LPs)'''
+        return SCIPgetNStrongbranchs(self._scip)
+
+    def getNNodeLPs(self):
+        '''gets total number of LPs solved so far for node relaxations'''
+        return SCIPgetNNodeLPs(self._scip)
+
+    def updateCutoffbound(self, cutoffbound):
+        PY_SCIP_CALL(SCIPupdateCutoffbound(self._scip, cutoffbound))
+
+    def getCutoffbound(self):
+        return SCIPgetCutoffbound(self._scip)
+
     
 # debugging memory management
 def is_memory_freed():
