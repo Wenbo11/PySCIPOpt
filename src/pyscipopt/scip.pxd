@@ -1463,6 +1463,8 @@ cdef extern from "scip/scip.h":
     SCIP_Real SCIPgetVarAvgInferenceScore(SCIP* scip, SCIP_VAR* var)
     SCIP_Real SCIPgetVarConflictlengthScore(SCIP* scip, SCIP_VAR* var)
     SCIP_Real SCIPgetVarConflictScore(SCIP* scip, SCIP_VAR* var)
+    int SCIPgetNIntVars(SCIP* scip)
+    int SCIPgetNBinVars(SCIP* scip)
     
     BMS_BLKMEM* SCIPblkmem(SCIP* scip)
 

@@ -5989,11 +5989,17 @@ cdef class Model:
             node_state_view[5] = self.relPosition(node_bound=SCIPgetLPObjval(self._scip), ub=SCIPgetUpperbound(self._scip), lb=SCIPgetLowerbound(self._scip)) 
         
         # candidate set and bound changes
-        node_state_view[6] = float(len(self.getLPBranchCands())) / self.getNDiscreteVars()
+        node_state_view[6] = float(len(self.getPseudoBranchCands())) / self.getNDiscreteVars()
         node_state_view[7] = float(nboundchgs) / SCIPgetNVars(self._scip)
         
         return node_state
 
+    def getNDiscreteVars(self, transformed=False):
+        """Get number of binary + integer variables.
+        
+        :param transformed: bool, get transformed variables instead of original (Default value = False)
+        """
+        return SCIPgetNBinVars(self._scip) + SCIPgetNIntVars(self._scip)
         
     @cython.boundscheck(False)
     @cython.wraparound(False)
@@ -6183,7 +6189,7 @@ cdef class Model:
         cdef int nfracimplvars
         PY_SCIP_CALL(SCIPgetLPBranchCands(self._scip, &lpcands, &lpcandssol, &lpcandsfrac, &nlpcands, &npriolpcands, &nfracimplvars))
 
-        cands_state_mat = np.empty((nlpcands, var_dim), dtype=np.double)
+        cands_state_mat = np.empty([nlpcands, var_dim], dtype=np.double)
         cdef double[:, ::1] cands_state_mat_view = cands_state_mat  # C-view contiguous
         cdef size_t i = 0
     
