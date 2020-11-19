@@ -5953,17 +5953,20 @@ cdef class Model:
     
     @cython.boundscheck(False)
     @cython.wraparound(False)
-    def getNodeState(self, node_dim):
+    def getNodeState(self, Node innode, node_dim):
         """Get Node state representation.
         
         :param node_dim: int, dimensionality of node state representation (8).
         """
         node_state = np.empty(node_dim, dtype=np.double)
-        cdef double[::1] node_state_view = node_state # C-view contiguous
 
-        cdef SCIP_NODE* node = SCIPgetCurrentNode(self._scip)
-        domchg = SCIPnodeGetDomchg(node)
-        nboundchgs = SCIPdomchgGetNBoundchgs(domchg)
+        cdef double[::1] node_state_view = node_state # C-view contiguous
+        cdef SCIP_NODE* node = innode.scip_node
+        if SCIPgetMaxDepth(self._scip) == -1:
+            nboundchgs = 0
+        else:
+            domchg = SCIPnodeGetDomchg(node)
+            nboundchgs = SCIPdomchgGetNBoundchgs(domchg)
 
         if node == SCIPgetRootNode(self._scip):
             isRoot = True
@@ -5971,28 +5974,31 @@ cdef class Model:
             isRoot = False
 
         # depth and position
-        if isRoot:
+
+        if isRoot or SCIPgetMaxDepth(self._scip) <= 0 :
             node_state_view[0:2] = 0.
         else:
             node_state_view[0] = float(SCIPnodeGetDepth(node)) / SCIPgetMaxDepth(self._scip)
             node_state_view[1] = float(SCIPgetPlungeDepth(self._scip)) / SCIPnodeGetDepth(node)
                  
-        # LP objective
+        # # LP objective
         node_state_view[2] = self.relDistance(SCIPgetLowerbound(self._scip), SCIPgetLPObjval(self._scip))
         node_state_view[3] = self.relDistance(SCIPgetLowerboundRoot(self._scip), SCIPgetLPObjval(self._scip))
-        
+
         # LP bound
         if SCIPisInfinity(self._scip, SCIPgetUpperbound(self._scip)):
             node_state_view[4:6] = 0.
         else:
             node_state_view[4] = self.relDistance(SCIPgetUpperbound(self._scip), SCIPgetLPObjval(self._scip))
             node_state_view[5] = self.relPosition(node_bound=SCIPgetLPObjval(self._scip), ub=SCIPgetUpperbound(self._scip), lb=SCIPgetLowerbound(self._scip)) 
-        
+
         # candidate set and bound changes
         node_state_view[6] = float(len(self.getPseudoBranchCands())) / self.getNDiscreteVars()
         node_state_view[7] = float(nboundchgs) / SCIPgetNVars(self._scip)
         
         return node_state
+
+
 
     def getNDiscreteVars(self, transformed=False):
         """Get number of binary + integer variables.
@@ -6025,7 +6031,7 @@ cdef class Model:
         else:
             isRoot = False
         
-        if isRoot:
+        if isRoot or SCIPgetMaxDepth(self._scip) == -1:
             # nodes and leaves
             mip_state_view[:8] = 0.
             # depth and backtracks
@@ -6086,7 +6092,7 @@ cdef class Model:
             mip_state_view[22] = self.relDistance(SCIPgetUpperbound(self._scip), SCIPgetLowerbound(self._scip)) # zero until UB is available
 
         mip_state_view[23] = float(SCIPisPrimalboundSol(self._scip))
-        if isRoot:
+        if isRoot or SCIPgetMaxDepth(self._scip) == -1:
             mip_state_view[24] = 0.
         else:
             mip_state_view[24] = float(self._scip.stat.nnodesbeforefirst) / SCIPgetNNodes(self._scip) # negative until first solution found
