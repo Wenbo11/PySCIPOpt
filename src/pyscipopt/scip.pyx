@@ -6076,7 +6076,7 @@ cdef class Model:
         else:
             mip_state_view[16] = np.log(self._scip.stat.primaldualintegral)
 
-        if SCIPisInfinity(self._scip, SCIPgetGap(self._scip)) or SCIPisInfinity(self._scip, self._scip.stat.lastsolgap) or SCIPisInfinity(self._scip, self._scip.stat.firstsolgap):
+        if self._scip.stat.lastsolgap == 0 or self._scip.stat.firstsolgap == 0 or SCIPisInfinity(self._scip, SCIPgetGap(self._scip)) or SCIPisInfinity(self._scip, self._scip.stat.lastsolgap) or SCIPisInfinity(self._scip, self._scip.stat.firstsolgap):
             mip_state_view[17:20] = 0.
         else:    
             mip_state_view[17] = SCIPgetGap(self._scip) / self._scip.stat.lastsolgap
